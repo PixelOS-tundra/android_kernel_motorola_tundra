@@ -39,6 +39,8 @@
 
 #define SEC_PANEL_NAME_MAX_LEN  256
 
+struct dsi_display *primary_display;
+
 u8 dbgfs_tx_cmd_buf[SZ_4K];
 static char dsi_display_primary[MAX_CMDLINE_PARAM_LEN];
 static char dsi_display_secondary[MAX_CMDLINE_PARAM_LEN];
@@ -7425,6 +7427,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 exit:
 	*out_modes = display->modes;
 	rc = 0;
+	primary_display = display;
 
 error:
 	if (rc)
@@ -9266,6 +9269,10 @@ void dsi_display_report_dead(struct dsi_display *display)
 	sde_connector_schedule_status_work(display->drm_conn, false);
 
 	sde_connector_report_panel_dead(c_conn, false);
+}
+
+struct dsi_display *get_main_display(void) {
+	return primary_display;
 }
 
 void __init dsi_display_register(void)
