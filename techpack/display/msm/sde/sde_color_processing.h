@@ -384,4 +384,6 @@ int sde_dspp_spr_read_opr_value(struct sde_hw_dspp *hw_dspp, u32 *opr_value);
  */
 void sde_cp_backlight_notification(struct drm_crtc *crtc, u32 bl_val, u32 bl_max);
 
+const struct drm_msm_pcc *sde_cp_crtc_get_pcc_cfg(struct drm_crtc *crtc);
+
 #endif /*_SDE_COLOR_PROCESSING_H */
