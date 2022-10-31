@@ -82,6 +82,11 @@ struct sde_plane {
 	bool revalidate;
 	bool xin_halt_forced_clk;
 
+	const struct drm_msm_pcc *pcc_cfg;
+	uint32_t pcc_coeff[9];
+	struct sde_csc_cfg csc_pcc_cfg;
+	struct sde_csc_cfg *csc_pcc_ptr;
+
 	uint32_t cached_lut_flag;
 	struct sde_hw_scaler3_cfg scaler3_cfg;
 	struct sde_hw_pixel_ext pixel_ext;
@@ -440,5 +445,7 @@ void sde_plane_dump_input_fence(struct drm_plane *plane);
  */
 bool sde_plane_is_sw_fence_signaled(struct drm_plane *plane);
 int sde_plane_is_fod_layer(const struct drm_plane_state *drm_state);
+
+struct sde_csc_cfg *sde_plane_get_csc_cfg(struct drm_plane *plane);
 
 #endif /* _SDE_PLANE_H_ */
