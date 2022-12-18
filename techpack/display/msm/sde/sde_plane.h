@@ -87,6 +87,8 @@ struct sde_plane {
 	struct sde_csc_cfg csc_pcc_cfg;
 	struct sde_csc_cfg *csc_pcc_ptr;
 
+	u8 fod_dim_alpha;
+
 	uint32_t cached_lut_flag;
 	struct sde_hw_scaler3_cfg scaler3_cfg;
 	struct sde_hw_pixel_ext pixel_ext;
@@ -217,6 +219,7 @@ struct sde_plane_state {
 	struct sde_csc_cfg csc_cfg;
 	struct sde_csc_cfg *csc_usr_ptr;
 	struct sde_csc_cfg *csc_ptr;
+	u8 fod_dim_alpha;
 };
 
 /**
@@ -447,5 +450,7 @@ bool sde_plane_is_sw_fence_signaled(struct drm_plane *plane);
 int sde_plane_is_fod_layer(const struct drm_plane_state *drm_state);
 
 struct sde_csc_cfg *sde_plane_get_csc_cfg(struct drm_plane *plane);
+
+void sde_plane_set_fod_dim_alpha(struct sde_plane_state *pstatem, u8 alpha);
 
 #endif /* _SDE_PLANE_H_ */
