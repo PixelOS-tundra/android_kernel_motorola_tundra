@@ -132,12 +132,14 @@ struct cam_sensor_ctrl_t {
 	uint16_t pipeline_delay;
 	uint32_t batch_number;
 	uint32_t probe_sensor_slave_addr;
+#ifdef CONFIG_CAMERA_SUB_DEVICE_PROBE
 	uint8_t   probe_sub_device;
 	uint16_t  sub_device_addr;
 	uint8_t   sub_device_data_type;
 	uint8_t   sub_device_addr_type;
 	uint16_t  sub_device_id_addr;
 	uint16_t  expected_sub_device_id;
+#endif
 #ifdef CONFIG_CAMERA_CCI_MASTER_CHANGE
 	uint8_t   sub_device_cci_master;
 	uint8_t   sub_device_cci_device;
