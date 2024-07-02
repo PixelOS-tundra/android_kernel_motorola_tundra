@@ -464,8 +464,11 @@ static int open_utags(struct blkdev *cb)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0) || defined(CONFIG_MMI_UTAG_RW_BIO)
 	struct block_device *bdev = NULL;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+	bdev = blkdev_get_by_path(cb->name, FMODE_READ | FMODE_WRITE, cb, NULL);
+#else
 	bdev = blkdev_get_by_path(cb->name, FMODE_READ | FMODE_WRITE, cb);
-
+#endif
 	if (IS_ERR(bdev)) {
 		pr_err("(%s) failed get block device\n", cb->name);
 		return -EIO;
