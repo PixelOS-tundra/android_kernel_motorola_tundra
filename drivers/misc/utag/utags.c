@@ -1385,6 +1385,11 @@ static int read_utag(struct seq_file *file, void *v)
 		goto free_tags_exit;
 	}
 
+	if (tag->payload == NULL) {
+		pr_err("utag [%s] payload is empty\n", utag_name);
+		goto free_tags_exit;
+	}
+
 	switch (proc->mode) {
 	case OUT_ASCII:
 		seq_printf(file, "%s", (char *)tag->payload);
