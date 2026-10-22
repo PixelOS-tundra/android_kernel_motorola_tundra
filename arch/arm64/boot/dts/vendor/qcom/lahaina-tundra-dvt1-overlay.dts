@@ -3,14 +3,14 @@
  * tundra dvt1 board overlay. Moto ABL picks the dtbo entry by these root
  * properties, so they match lahaina-tundra-dvt1-overlay.dts from 5.4
  * (including platinfo and the carrier channel-id-map); without them ABL
- * fails with "Board Dtbo blob not found". Board nodes move here as they
- * get ported.
+ * fails with "Board Dtbo blob not found".
  */
 
 /dts-v1/;
 /plugin/;
 
 #include "carrier-channel-ids.dtsi"
+#include "lahaina-tundra-overlay.dtsi"
 
 / {
 	model = "Tundra";
