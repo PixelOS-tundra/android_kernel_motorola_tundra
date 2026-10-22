@@ -106,11 +106,9 @@
 	.endm
 
 SYM_CODE_START(primary_entry)
-	bringup_delay				// stage 0a: kernel entered
 	bl	preserve_boot_args
 	bl	init_kernel_el			// w0=cpu_boot_mode
 	mov	x20, x0
-	bringup_delay				// stage 0b: EL set up
 	bl	create_idmap
 
 	/*
@@ -128,7 +126,6 @@ SYM_CODE_START(primary_entry)
 	mov	x0, x25
 #endif
 	bl	__cpu_setup			// initialise processor
-	bringup_delay				// stage 0c: CPU set up
 	b	__primary_switch
 SYM_CODE_END(primary_entry)
 
@@ -491,7 +488,6 @@ SYM_FUNC_START_LOCAL(__primary_switched)
 	mov	x0, x20
 	bl	finalise_el2			// Prefer VHE if possible
 	ldp	x29, x30, [sp], #16
-	bringup_delay				// stage 0d: MMU on, about to start_kernel
 	bl	start_kernel
 	ASM_BUG()
 SYM_FUNC_END(__primary_switched)

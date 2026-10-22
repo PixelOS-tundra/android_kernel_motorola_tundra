@@ -907,7 +907,7 @@ early_param("randomize_kstack_offset", early_randomize_kstack_offset);
  * boot stage, so how long the screen stays black before a reset tells
  * which stage was the last one reached.
  */
-static void __init __no_sanitize_address bringup_stage_delay(int stage)
+void __init __no_sanitize_address bringup_stage_delay(int stage)
 {
 	u64 freq = read_sysreg(cntfrq_el0);
 	u64 end;
