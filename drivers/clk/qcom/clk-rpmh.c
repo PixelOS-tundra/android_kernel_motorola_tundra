@@ -582,6 +582,48 @@ static const struct clk_rpmh_desc clk_rpmh_sm8350 = {
 	.num_clks = ARRAY_SIZE(sm8350_rpmh_clocks),
 };
 
+DEFINE_CLK_RPMH_ARC(lahaina, bi_tcxo, bi_tcxo_ao, "xo.lvl", 0x3, 2);
+DEFINE_CLK_RPMH_VRM_OPT(lahaina, div_clk1, div_clk1_ao, "divclka1", 2);
+DEFINE_CLK_RPMH_VRM(lahaina, ln_bb_clk1, ln_bb_clk1_ao, "lnbclka1", 2);
+DEFINE_CLK_RPMH_VRM(lahaina, ln_bb_clk2, ln_bb_clk2_ao, "lnbclka2", 2);
+DEFINE_CLK_RPMH_VRM(lahaina, rf_clk1, rf_clk1_ao, "rfclka1", 1);
+DEFINE_CLK_RPMH_VRM_OPT(lahaina, rf_clk2, rf_clk2_ao, "rfclka2", 1);
+DEFINE_CLK_RPMH_VRM(lahaina, rf_clk3, rf_clk3_ao, "rfclka3", 1);
+DEFINE_CLK_RPMH_VRM(lahaina, rf_clk4, rf_clk4_ao, "rfclka4", 1);
+DEFINE_CLK_RPMH_VRM(lahaina, rf_clk5, rf_clk5_ao, "rfclka5", 1);
+DEFINE_CLK_RPMH_BCM(lahaina, ipa, "IP0");
+DEFINE_CLK_RPMH_BCM(lahaina, pka, "PKA0");
+DEFINE_CLK_RPMH_BCM(lahaina, hwkm, "HK0");
+
+static struct clk_hw *lahaina_rpmh_clocks[] = {
+	[RPMH_CXO_CLK]		= &lahaina_bi_tcxo.hw,
+	[RPMH_CXO_CLK_A]	= &lahaina_bi_tcxo_ao.hw,
+	[RPMH_DIV_CLK1]		= &lahaina_div_clk1.hw,
+	[RPMH_DIV_CLK1_A]	= &lahaina_div_clk1_ao.hw,
+	[RPMH_LN_BB_CLK1]	= &lahaina_ln_bb_clk1.hw,
+	[RPMH_LN_BB_CLK1_A]	= &lahaina_ln_bb_clk1_ao.hw,
+	[RPMH_LN_BB_CLK2]	= &lahaina_ln_bb_clk2.hw,
+	[RPMH_LN_BB_CLK2_A]	= &lahaina_ln_bb_clk2_ao.hw,
+	[RPMH_RF_CLK1]		= &lahaina_rf_clk1.hw,
+	[RPMH_RF_CLK1_A]	= &lahaina_rf_clk1_ao.hw,
+	[RPMH_RF_CLK2]		= &lahaina_rf_clk2.hw,
+	[RPMH_RF_CLK2_A]	= &lahaina_rf_clk2_ao.hw,
+	[RPMH_RF_CLK3]		= &lahaina_rf_clk3.hw,
+	[RPMH_RF_CLK3_A]	= &lahaina_rf_clk3_ao.hw,
+	[RPMH_RF_CLK4]		= &lahaina_rf_clk4.hw,
+	[RPMH_RF_CLK4_A]	= &lahaina_rf_clk4_ao.hw,
+	[RPMH_RF_CLK5]		= &lahaina_rf_clk5.hw,
+	[RPMH_RF_CLK5_A]	= &lahaina_rf_clk5_ao.hw,
+	[RPMH_IPA_CLK]		= &lahaina_ipa.hw,
+	[RPMH_PKA_CLK]		= &lahaina_pka.hw,
+	[RPMH_HWKM_CLK]		= &lahaina_hwkm.hw,
+};
+
+static const struct clk_rpmh_desc clk_rpmh_lahaina = {
+	.clks = lahaina_rpmh_clocks,
+	.num_clks = ARRAY_SIZE(lahaina_rpmh_clocks),
+};
+
 DEFINE_CLK_RPMH_VRM(sc8280xp, ln_bb_clk3, ln_bb_clk3_ao, "lnbclka3", 2);
 
 static struct clk_hw *sc8280xp_rpmh_clocks[] = {
@@ -1043,6 +1085,7 @@ static const struct of_device_id clk_rpmh_match_table[] = {
 	{ .compatible = "qcom,sm8150-rpmh-clk", .data = &clk_rpmh_sm8150},
 	{ .compatible = "qcom,sm8250-rpmh-clk", .data = &clk_rpmh_sm8250},
 	{ .compatible = "qcom,sm8350-rpmh-clk", .data = &clk_rpmh_sm8350},
+	{ .compatible = "qcom,lahaina-rpmh-clk", .data = &clk_rpmh_lahaina},
 	{ .compatible = "qcom,sm8450-rpmh-clk", .data = &clk_rpmh_sm8450},
 	{ .compatible = "qcom,sc7280-rpmh-clk", .data = &clk_rpmh_sc7280},
 	{ .compatible = "qcom,kalama-rpmh-clk", .data = &clk_rpmh_kalama},
