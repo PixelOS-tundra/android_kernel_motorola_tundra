@@ -1,15 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * tundra dvt2 board overlay. Only carries the IDs ABL matches on for now;
- * board-specific nodes move here as they get ported.
+ * tundra dvt2 board overlay. Moto ABL picks the dtbo entry by these root
+ * properties, so they match lahaina-tundra-dvt2-overlay.dts from 5.4
+ * (including platinfo and the carrier channel-id-map); without them ABL
+ * fails with "Board Dtbo blob not found". Board nodes move here as they
+ * get ported.
  */
 
 /dts-v1/;
 /plugin/;
 
+#include "carrier-channel-ids.dtsi"
+
 / {
-	model = "Motorola tundra dvt2";
-	compatible = "qcom,lahaina-moto", "qcom,lahaina";
+	model = "Tundra";
+	platinfo = "Qualcomm Technologies, Inc SM8350";
+	compatible = "qcom,lahaina-Tundra", "qcom,lahaina-moto", "qcom,lahaina";
 	qcom,msm-id = <415 0x20001>;
 	qcom,board-id = <0x41 0xB200>;
 };
