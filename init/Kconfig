@@ -132,6 +132,15 @@ config THREAD_INFO_IN_TASK
 
 menu "General setup"
 
+config TUNDRA_BRINGUP_STAGE_DELAYS
+	bool "Spin 10s at each boot stage (bring-up debugging)"
+	depends on ARM64
+	help
+	  Debug aid for bring-up on a device with no log channel. Spins for
+	  ten seconds at five points of the boot (start_kernel, after
+	  setup_arch, before rest_init, start of kernel_init_freeable, after
+	  the initcalls), so the time until a reset shows how far it got.
+
 config BROKEN
 	bool
 

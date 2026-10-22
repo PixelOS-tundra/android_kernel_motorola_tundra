@@ -899,6 +899,29 @@ static int __init early_randomize_kstack_offset(char *buf)
 early_param("randomize_kstack_offset", early_randomize_kstack_offset);
 #endif
 
+#ifdef CONFIG_TUNDRA_BRINGUP_STAGE_DELAYS
+#include <asm/sysreg.h>
+
+/*
+ * Bring-up aid for a device with no log channel: spin for 10s at each
+ * boot stage, so how long the screen stays black before a reset tells
+ * which stage was the last one reached.
+ */
+static void __init __no_sanitize_address bringup_stage_delay(int stage)
+{
+	u64 freq = read_sysreg(cntfrq_el0);
+	u64 end;
+
+	pr_emerg("bring-up: reached stage %d\n", stage);
+	isb();
+	end = read_sysreg(cntvct_el0) + freq * 10;
+	while (read_sysreg(cntvct_el0) < end)
+		cpu_relax();
+}
+#else
+static inline void bringup_stage_delay(int stage) { }
+#endif
+
 void __init __weak arch_call_rest_init(void)
 {
 	rest_init();
@@ -1072,6 +1095,7 @@ asmlinkage __visible void __init __no_sanitize_address start_kernel(void)
 	char *command_line;
 	char *after_dashes;
 
+	bringup_stage_delay(1);
 	set_task_stack_end_magic(&init_task);
 	smp_setup_processor_id();
 	debug_objects_early_init();
@@ -1094,6 +1118,7 @@ asmlinkage __visible void __init __no_sanitize_address start_kernel(void)
 #endif
 	early_security_init();
 	setup_arch(&command_line);
+	bringup_stage_delay(2);
 	setup_boot_config();
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();
@@ -1272,6 +1297,7 @@ asmlinkage __visible void __init __no_sanitize_address start_kernel(void)
 	kcsan_init();
 
 	/* Do the rest non-__init'ed, we're now alive */
+	bringup_stage_delay(3);
 	arch_call_rest_init();
 
 	prevent_tail_call_optimization();
@@ -1729,6 +1755,7 @@ void __init console_on_rootfs(void)
 
 static noinline void __init kernel_init_freeable(void)
 {
+	bringup_stage_delay(4);
 	/* Now the scheduler is fully set up and can do blocking allocations */
 	gfp_allowed_mask = __GFP_BITS_MASK;
 
@@ -1759,6 +1786,7 @@ static noinline void __init kernel_init_freeable(void)
 		page_ext_init();
 
 	do_basic_setup();
+	bringup_stage_delay(5);
 
 	wait_for_initramfs();
 	console_on_rootfs();
