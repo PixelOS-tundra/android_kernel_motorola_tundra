@@ -15,6 +15,18 @@
 	compatible = "qcom,lahaina";
 	qcom,msm-id = <415 0x20001>, <456 0x20001>, <501 0x20001>;
 	qcom,board-id = <0 0>;
+
+	/*
+	 * Placeholders from lahaina-moto-base-v2.1.dts. Moto ABL fills these
+	 * in at boot and resets before jumping to the kernel if they are
+	 * missing.
+	 */
+	platinfo = "";
+	channel-id-map = "";
+
+	mot_batterydata: qcom,battery-data { };
+	utags: utags { };
+	hw: hw { };
 };
 
 /* From lahaina-moto-common-overlay-base.dtsi and the tundra overlay */
