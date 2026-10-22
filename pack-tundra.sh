@@ -6,6 +6,8 @@
 # that by default (SAFE_FSTAB=1) "formattable" and "check" are stripped from
 # the first-stage fstab, so a misbehaving storage driver can never make
 # fs_mgr fsck or reformat /metadata or /data.
+# DTB=<file> overrides the DTB put into vendor_boot; DTB=keep keeps the one
+# already in the input vendor_boot.img.
 # Usage: ./pack-tundra.sh <dir with boot.img + vendor_boot.img> [dest-dir]
 set -e
 SRC=$(cd "$(dirname "$0")" && pwd)
@@ -17,6 +19,7 @@ IN=$(cd "$1" && pwd)
 DEST=${2:-$SRC/../images/test}
 DTS=$OUT/arch/arm64/boot/dts/vendor/qcom
 SAFE_FSTAB=${SAFE_FSTAB:-1}
+DTB=${DTB:-$DTS/lahaina-tundra-base.dtb}
 
 mkdir -p "$DEST"
 tmp=$(mktemp -d)
@@ -41,8 +44,9 @@ fi
 
 eval python3 "$MKB/mkbootimg.py" "$(cat "$tmp/boot.args")" \
 	--kernel "$OUT/arch/arm64/boot/Image" --output "$DEST/boot.img"
+[ "$DTB" = keep ] && DTB=$tmp/vendor_boot/dtb
 eval python3 "$MKB/mkbootimg.py" "$(cat "$tmp/vendor_boot.args")" \
-	--dtb "$DTS/lahaina-tundra-base.dtb" --vendor_ramdisk "$vendor_ramdisk" \
+	--dtb "$DTB" --vendor_ramdisk "$vendor_ramdisk" \
 	--vendor_boot "$DEST/vendor_boot.img"
 python3 "$MKDTBO" create "$DEST/dtbo.img" --page_size=4096 \
 	"$DTS"/lahaina-tundra-{evb,dvt1,dvt2}-overlay.dtbo
