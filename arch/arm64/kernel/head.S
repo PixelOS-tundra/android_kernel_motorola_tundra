@@ -106,7 +106,6 @@
 	.endm
 
 SYM_CODE_START(primary_entry)
-	bringup_delay				// stage 0: kernel entered
 	bl	preserve_boot_args
 	bl	init_kernel_el			// w0=cpu_boot_mode
 	mov	x20, x0
