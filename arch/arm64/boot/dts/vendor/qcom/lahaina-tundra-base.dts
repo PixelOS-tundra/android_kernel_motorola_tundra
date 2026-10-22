@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * tundra base DT for the 6.1 bring-up (goes into vendor_boot).
- * Board nodes live here for now instead of in the dtbo overlays, so a
- * test boot does not depend on ABL applying overlays to the new base.
+ * Board configuration is in lahaina-tundra-overlay.dtsi (the dtbo), as in
+ * the 5.4 tree.
  */
 
 /dts-v1/;
@@ -27,38 +27,4 @@
 	mot_batterydata: qcom,battery-data { };
 	utags: utags { };
 	hw: hw { };
-};
-
-/* From lahaina-moto-common-overlay-base.dtsi and the tundra overlay */
-&ufsphy_mem {
-	compatible = "qcom,ufs-phy-qmp-v4-lahaina";
-
-	vdda-phy-supply = <&pm8350_l5>;
-	vdda-pll-supply = <&pm8350_l6>;
-	vdda-phy-max-microamp = <91600>;
-	vdda-pll-max-microamp = <19000>;
-
-	status = "ok";
-};
-
-&ufshc_mem {
-	vdd-hba-supply = <&gcc_ufs_phy_gdsc>;
-	vdd-hba-fixed-regulator;
-
-	vcc-supply = <&pm8350_l7>;
-	vcc-voltage-level = <2504000 2950000>;
-	vcc-max-microamp = <800000>;
-
-	vccq-supply = <&pm8350_l9>;
-	vccq-max-microamp = <900000>;
-
-	qcom,vddp-ref-clk-supply = <&pm8350_l9>;
-	qcom,vddp-ref-clk-max-microamp = <100>;
-
-	qcom,vccq-parent-supply = <&pm8350_s12>;
-	qcom,vccq-parent-max-microamp = <210000>;
-
-	reset-gpios = <&tlmm 203 GPIO_ACTIVE_LOW>;
-
-	status = "ok";
 };
