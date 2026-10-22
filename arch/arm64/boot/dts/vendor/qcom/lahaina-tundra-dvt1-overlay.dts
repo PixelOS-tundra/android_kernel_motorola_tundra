@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * tundra dvt1 board overlay. Only carries the IDs ABL matches on for now;
+ * board-specific nodes move here as they get ported.
+ */
+
+/dts-v1/;
+/plugin/;
+
+/ {
+	model = "Motorola tundra dvt1";
+	compatible = "qcom,lahaina-moto", "qcom,lahaina";
+	qcom,msm-id = <415 0x20001>;
+	qcom,board-id = <0x41 0xB100>;
+};
