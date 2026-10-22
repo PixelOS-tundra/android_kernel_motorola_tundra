@@ -86,6 +86,22 @@
 	 *  x28        create_idmap()                           callee preserved temp register
 	 */
 SYM_CODE_START(primary_entry)
+#ifdef CONFIG_TUNDRA_BRINGUP_STAGE_DELAYS
+	/*
+	 * Bring-up stage 0: spin for 10s before touching anything, using
+	 * only x16/x17 so the boot arguments in x0-x3 are preserved.
+	 */
+	mrs	x16, cntfrq_el0
+	mov	x17, #10
+	mul	x16, x16, x17
+	isb
+	mrs	x17, cntvct_el0
+	add	x16, x16, x17
+1:	isb
+	mrs	x17, cntvct_el0
+	cmp	x17, x16
+	b.lo	1b
+#endif
 	bl	preserve_boot_args
 	bl	init_kernel_el			// w0=cpu_boot_mode
 	mov	x20, x0
