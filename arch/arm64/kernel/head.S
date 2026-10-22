@@ -85,26 +85,32 @@
 	 *  x25        primary_entry() .. start_kernel()        supported VA size
 	 *  x28        create_idmap()                           callee preserved temp register
 	 */
-SYM_CODE_START(primary_entry)
-#ifdef CONFIG_TUNDRA_BRINGUP_STAGE_DELAYS
 	/*
-	 * Bring-up stage 0: spin for 10s before touching anything, using
-	 * only x16/x17 so the boot arguments in x0-x3 are preserved.
+	 * Bring-up stage delay: spin for 10s, using only x16/x17 so live
+	 * registers (boot arguments, SCTLR value, ...) are preserved.
 	 */
+	.macro	bringup_delay
+#ifdef CONFIG_TUNDRA_BRINGUP_STAGE_DELAYS
 	mrs	x16, cntfrq_el0
 	mov	x17, #10
 	mul	x16, x16, x17
 	isb
 	mrs	x17, cntvct_el0
 	add	x16, x16, x17
-1:	isb
+.Lbringup_delay\@:
+	isb
 	mrs	x17, cntvct_el0
 	cmp	x17, x16
-	b.lo	1b
+	b.lo	.Lbringup_delay\@
 #endif
+	.endm
+
+SYM_CODE_START(primary_entry)
+	bringup_delay				// stage 0a: kernel entered
 	bl	preserve_boot_args
 	bl	init_kernel_el			// w0=cpu_boot_mode
 	mov	x20, x0
+	bringup_delay				// stage 0b: EL set up
 	bl	create_idmap
 
 	/*
@@ -122,6 +128,7 @@ SYM_CODE_START(primary_entry)
 	mov	x0, x25
 #endif
 	bl	__cpu_setup			// initialise processor
+	bringup_delay				// stage 0c: CPU set up
 	b	__primary_switch
 SYM_CODE_END(primary_entry)
 
@@ -484,6 +491,7 @@ SYM_FUNC_START_LOCAL(__primary_switched)
 	mov	x0, x20
 	bl	finalise_el2			// Prefer VHE if possible
 	ldp	x29, x30, [sp], #16
+	bringup_delay				// stage 0d: MMU on, about to start_kernel
 	bl	start_kernel
 	ASM_BUG()
 SYM_FUNC_END(__primary_switched)
