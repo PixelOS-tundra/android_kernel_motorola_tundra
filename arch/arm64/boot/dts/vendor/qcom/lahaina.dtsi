@@ -150,15 +150,6 @@
 		method = "smc";
 	};
 
-	timer {
-		compatible = "arm,armv8-timer";
-		interrupts = <GIC_PPI 13 0xff08>,
-			     <GIC_PPI 14 0xff08>,
-			     <GIC_PPI 11 0xff08>,
-			     <GIC_PPI 12 0xff08>;
-		clock-frequency = <19200000>;
-	};
-
 	clocks {
 		xo_board: xo-board {
 			compatible = "fixed-clock";
@@ -180,6 +171,29 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges = <0 0 0 0xffffffff>;
+
+		/*
+		 * The timer and watchdog nodes sit under /soc with these labels
+		 * as in 5.4: the hypervisor's DT overlays, which ABL applies
+		 * together with the board dtbo, add "always-on" to arch_timer
+		 * and set the status of wdog. ABL refuses to boot ("ufdt apply
+		 * overlay failed") if either target is missing.
+		 */
+		arch_timer: timer {
+			compatible = "arm,armv8-timer";
+			interrupts = <GIC_PPI 13 0xff08>,
+				     <GIC_PPI 14 0xff08>,
+				     <GIC_PPI 11 0xff08>,
+				     <GIC_PPI 12 0xff08>;
+			clock-frequency = <19200000>;
+		};
+
+		wdog: qcom,wdt@17c10000 {
+			compatible = "qcom,msm-watchdog";
+			reg = <0x17c10000 0x1000>;
+			reg-names = "wdt-base";
+			interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>;
+		};
 
 		intc: interrupt-controller@17a00000 {
 			compatible = "arm,gic-v3";
