@@ -1526,10 +1526,15 @@ static int rpmh_probe_channel_tcs_config(struct device_node *np,
 	u32 tcs_mask;
 
 	n = of_property_count_u32_elems(np, "qcom,tcs-config");
-	if (n != 2 * TCS_TYPE_NR)
+	if (n == 2 * (TCS_TYPE_NR - 1)) {
+		/* Legacy (5.4) binding: no fast-path TCS */
+		tcs_cfg[TCS_TYPE_NR - 1].type = FAST_PATH_TCS;
+		tcs_cfg[TCS_TYPE_NR - 1].n = 0;
+	} else if (n != 2 * TCS_TYPE_NR) {
 		return -EINVAL;
+	}
 
-	for (i = 0; i < TCS_TYPE_NR; i++) {
+	for (i = 0; i < n / 2; i++) {
 		ret = of_property_read_u32_index(np, "qcom,tcs-config",
 						 i * 2, &tcs_cfg[i].type);
 		if (ret)
@@ -1608,6 +1613,14 @@ static int rpmh_probe_tcs_config(struct rsc_drv *drv)
 			return ret;
 		ch++;
 	}
+
+	/* Legacy (5.4) binding: the DRV node is its only channel */
+	if (!ch && of_find_property(np, "qcom,tcs-config", NULL)) {
+		ret = rpmh_probe_channel_tcs_config(np, drv, max_tcs, ncpt, ch);
+		if (ret)
+			return ret;
+		ch++;
+	}
 	drv->num_channels = ch;
 
 	return 0;
@@ -1644,6 +1657,17 @@ static int rpmh_rsc_pd_attach(struct rsc_drv *drv)
 	return dev_pm_genpd_add_notifier(&drv->pdev->dev, &drv->genpd_nb);
 }
 
+static struct device_node *rpmh_rsc_next_drv(struct device_node *dn,
+					     struct device_node *prev,
+					     bool legacy)
+{
+	if (!legacy)
+		return of_get_next_child(dn, prev);
+
+	of_node_put(prev);
+	return prev ? NULL : of_node_get(dn);
+}
+
 static int rpmh_rsc_probe(struct platform_device *pdev)
 {
 	struct device_node *np, *dn = pdev->dev.of_node;
@@ -1653,6 +1677,7 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	u32 rsc_id, major_ver, minor_ver, solver_config;
 	int i, j, drv_count;
 	const char *name;
+	bool legacy;
 
 	/*
 	 * Even though RPMh doesn't directly use cmd-db, all of its children
@@ -1675,9 +1700,22 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	if (!rsc_top)
 		return -ENOMEM;
 
-	ret = of_property_read_u32(dn, "qcom,drv-count", &drv_count);
-	if (ret)
-		return ret;
+	/*
+	 * The legacy (5.4) binding has no drv children: the RSC node itself
+	 * is the one DRV, with qcom,drv-id/tcs-offset/tcs-config, and the
+	 * RPMh clients are its direct children.
+	 */
+	legacy = !of_find_property(dn, "qcom,drv-count", NULL);
+	if (legacy) {
+		ret = of_property_read_u32(dn, "qcom,drv-id", &drv_count);
+		if (ret)
+			return ret;
+		drv_count++;
+	} else {
+		ret = of_property_read_u32(dn, "qcom,drv-count", &drv_count);
+		if (ret)
+			return ret;
+	}
 
 	drv = devm_kcalloc(&pdev->dev, drv_count, sizeof(*drv), GFP_KERNEL);
 	if (!drv)
@@ -1692,10 +1730,11 @@ static int rpmh_rsc_probe(struct platform_device *pdev)
 	rsc_top->dev = &pdev->dev;
 	scnprintf(rsc_top->name, sizeof(rsc_top->name), "%s", name);
 
-	for_each_child_of_node(dn, np) {
+	for (np = rpmh_rsc_next_drv(dn, NULL, legacy); np;
+	     np = rpmh_rsc_next_drv(dn, np, legacy)) {
 		struct device *drv_dev;
 
-		if (!of_node_name_eq(np, "drv"))
+		if (!legacy && !of_node_name_eq(np, "drv"))
 			continue;
 
 		ret = of_property_read_u32(np, "qcom,drv-id", &i);
