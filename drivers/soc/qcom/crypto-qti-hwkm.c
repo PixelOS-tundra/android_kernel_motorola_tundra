@@ -539,10 +539,11 @@ int crypto_qti_derive_raw_secret_platform(const struct ice_mmio_data *mmio_data,
 {
 	int err = 0;
 
-#if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
-	return crypto_qti_derive_raw_secret_platform_v1(wrapped_key,
-		wrapped_key_size, secret, secret_size);
-#endif
+	/*
+	 * The HWKM has to be initialized (TP key loaded, ICE HWKM MMIO set
+	 * up) before a secret can be derived, also when no keyslot has been
+	 * programmed yet or after a UFS reset cleared qti_hwkm_init_done.
+	 */
 	if (!qti_hwkm_init_done) {
 		err = qti_hwkm_init(mmio_data);
 		if (err) {
@@ -555,6 +556,11 @@ int crypto_qti_derive_raw_secret_platform(const struct ice_mmio_data *mmio_data,
 		crypto_qti_update_slot_offset(mmio_data);
 #endif
 	}
+
+#if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
+	return crypto_qti_derive_raw_secret_platform_v1(wrapped_key,
+		wrapped_key_size, secret, secret_size);
+#endif
 
 	/*
 	 * Call TZ to get a raw secret
