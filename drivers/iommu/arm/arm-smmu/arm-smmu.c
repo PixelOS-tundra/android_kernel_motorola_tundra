@@ -99,6 +99,7 @@ static struct arm_smmu_option_prop arm_smmu_options[] = {
 	{ ARM_SMMU_OPT_CONTEXT_FAULT_RETRY, "qcom,context-fault-retry" },
 	{ ARM_SMMU_OPT_MULTI_MATCH_HANDOFF_SMR, "qcom,multi-match-handoff-smr" },
 	{ ARM_SMMU_OPT_IGNORE_NUMPAGENDXB, "qcom,ignore-numpagendxb" },
+	{ ARM_SMMU_OPT_SKIP_INIT, "qcom,skip-init" },
 	{ 0, NULL},
 };
 
@@ -2936,8 +2937,12 @@ static void arm_smmu_device_reset(struct arm_smmu_device *smmu)
 #if !defined CONFIG_QTI_QUIN_GVM
 	/*
 	 * Reset stream mapping groups: Initial values mark all SMRn as
-	 * invalid and all S2CRn as bypass unless overridden.
+	 * invalid and all S2CRn as bypass unless overridden. With the
+	 * legacy qcom,skip-init the boot state is left alone, as on 5.4.
 	 */
+	if (smmu->options & ARM_SMMU_OPT_SKIP_INIT)
+		goto skip_init;
+
 	mutex_lock(&smmu->stream_map_mutex);
 	for (i = 0; i < smmu->num_mapping_groups; ++i)
 		arm_smmu_write_sme(smmu, i);
@@ -2948,6 +2953,7 @@ static void arm_smmu_device_reset(struct arm_smmu_device *smmu)
 		arm_smmu_write_context_bank(smmu, i);
 		arm_smmu_cb_write(smmu, i, ARM_SMMU_CB_FSR, ARM_SMMU_FSR_FAULT);
 	}
+skip_init:
 #endif
 
 	/* Invalidate the TLB, just in case */
@@ -3013,6 +3019,49 @@ static int arm_smmu_id_size_to_bits(int size)
 	}
 }
 
+/*
+ * Legacy (5.4) "qcom,skip-init" binding: the bootloader and hypervisor
+ * leave live translations in the SMMU (e.g. the splash screen) and the DT
+ * does not list them in qcom,handoff-smrs. As the 5.4 driver did, keep
+ * every valid stream mapping that points at a translation context bank.
+ */
+static int arm_smmu_legacy_handoff_cbs(struct arm_smmu_device *smmu)
+{
+	u32 smr, s2cr;
+	int i, num = 0;
+
+	if (smmu->features & ARM_SMMU_FEAT_EXIDS)
+		return 0;
+
+	for (i = 0; i < smmu->num_mapping_groups; i++) {
+		smr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_SMR(i));
+		if (!FIELD_GET(ARM_SMMU_SMR_VALID, smr))
+			continue;
+
+		s2cr = arm_smmu_gr0_read(smmu, ARM_SMMU_GR0_S2CR(i));
+		if (FIELD_GET(ARM_SMMU_S2CR_TYPE, s2cr) != S2CR_TYPE_TRANS)
+			continue;
+
+		smmu->smrs[i].valid = true;
+		smmu->smrs[i].used = true;
+		smmu->smrs[i].id = FIELD_GET(ARM_SMMU_SMR_ID, smr);
+		smmu->smrs[i].mask = FIELD_GET(ARM_SMMU_SMR_MASK,
+					       smr & ~ARM_SMMU_SMR_VALID);
+
+		smmu->s2crs[i].group = NULL;
+		smmu->s2crs[i].count = 0;
+		smmu->s2crs[i].type = S2CR_TYPE_TRANS;
+		smmu->s2crs[i].privcfg = FIELD_GET(ARM_SMMU_S2CR_PRIVCFG, s2cr);
+		smmu->s2crs[i].cbndx = FIELD_GET(ARM_SMMU_S2CR_CBNDX, s2cr);
+		smmu->s2crs[i].pinned = true;
+		bitmap_set(smmu->context_map, smmu->s2crs[i].cbndx, 1);
+		num++;
+	}
+
+	dev_info(smmu->dev, "handed off %d boot stream mappings\n", num);
+	return 0;
+}
+
 static int arm_smmu_handoff_cbs(struct arm_smmu_device *smmu)
 {
 	u32 i, smr, s2cr;
@@ -3023,6 +3072,8 @@ static int arm_smmu_handoff_cbs(struct arm_smmu_device *smmu)
 	const __be32 *cell;
 
 	cell = of_get_property(smmu->dev->of_node, "qcom,handoff-smrs", NULL);
+	if (!cell && (smmu->options & ARM_SMMU_OPT_SKIP_INIT))
+		return arm_smmu_legacy_handoff_cbs(smmu);
 	if (!cell)
 		return 0;
 

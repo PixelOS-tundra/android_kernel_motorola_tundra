@@ -383,6 +383,7 @@ struct arm_smmu_device {
 #define ARM_SMMU_OPT_CONTEXT_FAULT_RETRY	(1 << 5)
 #define ARM_SMMU_OPT_MULTI_MATCH_HANDOFF_SMR	(1 << 6)
 #define ARM_SMMU_OPT_IGNORE_NUMPAGENDXB	(1 << 7)
+#define ARM_SMMU_OPT_SKIP_INIT		(1 << 8)
 	u32				options;
 	enum arm_smmu_arch_version	version;
 	enum arm_smmu_implementation	model;
