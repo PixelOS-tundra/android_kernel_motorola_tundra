@@ -19,6 +19,7 @@
 #include <linux/dma-heap.h>
 #include <linux/fdtable.h>
 #include <linux/fs.h>
+#include <linux/k61-stop.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -121,6 +122,12 @@ static int legacy_ion_alloc(struct ion_allocation_data *data)
 		fd = dma_heap_bufferfd_alloc(heap, data->len,
 					     O_RDWR | O_CLOEXEC, 0);
 		dma_heap_put(heap);
+		/* DEBUG (k61.stop=init/init2) */
+		if (k61_stop_init)
+			pr_info("k61dbg: ion %s[%d] alloc mask %#x flags %#x len %llu from %s -> %d\n",
+				current->comm, task_pid_nr(current),
+				data->heap_id_mask, data->flags, data->len,
+				name, fd);
 		if (fd >= 0) {
 			data->fd = fd;
 			return 0;
@@ -128,6 +135,10 @@ static int legacy_ion_alloc(struct ion_allocation_data *data)
 		ret = fd;
 	}
 
+	if (k61_stop_init)
+		pr_info("k61dbg: ion %s[%d] alloc mask %#x flags %#x len %llu failed %d\n",
+			current->comm, task_pid_nr(current),
+			data->heap_id_mask, data->flags, data->len, ret);
 	return ret;
 }
 

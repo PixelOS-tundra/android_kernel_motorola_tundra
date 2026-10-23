@@ -47,6 +47,7 @@
 #include <linux/version.h>
 #include "linux/qseecom_api.h"
 #include "ice.h"
+#include <linux/k61-stop.h>
 #if IS_ENABLED(CONFIG_QSEECOM_PROXY)
 #include <linux/qseecom_kernel.h>
 #include "misc/qseecom_priv.h"
@@ -7652,7 +7653,7 @@ static void __qseecom_clean_data_sglistinfo(struct qseecom_dev_handle *data)
 	}
 }
 
-long qseecom_ioctl(struct file *file,
+static long __qseecom_ioctl(struct file *file,
 			unsigned int cmd, unsigned long arg)
 {
 	int ret = 0;
@@ -8355,6 +8356,17 @@ long qseecom_ioctl(struct file *file,
 		pr_err("Invalid IOCTL: 0x%x\n", cmd);
 		return -ENOIOCTLCMD;
 	}
+	return ret;
+}
+
+/* DEBUG (k61.stop=init/init2): log every ioctl and its result */
+long qseecom_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	long ret = __qseecom_ioctl(file, cmd, arg);
+
+	if (k61_stop_init)
+		pr_info("k61dbg: qseecom %s[%d] ioctl nr %u -> %ld\n",
+			current->comm, task_pid_nr(current), _IOC_NR(cmd), ret);
 	return ret;
 }
 
