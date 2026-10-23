@@ -503,6 +503,32 @@ put_gdsc:
 	return rc < 0 ? rc : 0;
 }
 
+/*
+ * Legacy (5.4) binding: qcom,qmp-phy-init-seq holds <offset value delay>
+ * triplets ending with an offset of -1, while this driver walks <offset
+ * value> pairs. Convert such a sequence in place; the delays are dropped
+ * (with a warning, though the lahaina sequence has none).
+ */
+static void msm_ssphy_qmp_convert_legacy_seq(struct device *dev,
+					     struct msm_ssphy_qmp *phy)
+{
+	u32 *seq = phy->qmp_phy_init_seq;
+	int i, n = phy->init_seq_len;
+
+	if (n < 3 || n % 3 || seq[n - 3] != ~0U)
+		return;
+
+	for (i = 0; i < n / 3 - 1; i++) {
+		if (seq[3 * i + 2])
+			dev_warn(dev, "init seq: dropping %u us delay after %#x\n",
+				 seq[3 * i + 2], seq[3 * i]);
+		seq[2 * i] = seq[3 * i];
+		seq[2 * i + 1] = seq[3 * i + 1];
+	}
+	phy->init_seq_len = 2 * (n / 3 - 1);
+	dev_info(dev, "converted legacy init sequence (%d writes)\n", n / 3 - 1);
+}
+
 static int configure_phy_regs(struct usb_phy *uphy,
 				const struct qmp_reg_val *reg)
 {
@@ -1311,6 +1337,7 @@ static int msm_ssphy_qmp_probe(struct platform_device *pdev)
 				"qcom,qmp-phy-init-seq",
 				phy->qmp_phy_init_seq,
 				phy->init_seq_len);
+		msm_ssphy_qmp_convert_legacy_seq(dev, phy);
 	} else {
 		dev_err(dev, "error need qmp-phy-init-seq\n");
 		return -EINVAL;
