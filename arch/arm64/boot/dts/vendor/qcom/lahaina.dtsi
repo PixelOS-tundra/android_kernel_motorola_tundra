@@ -5,7 +5,7 @@
  */
 
 #include <dt-bindings/clock/qcom,gcc-lahaina.h>
-#include <dt-bindings/clock/qcom,rpmh.h>
+#include <dt-bindings/clock/qcom,lahaina-rpmh.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/regulator/qcom,rpmh-regulator-levels.h>
@@ -270,7 +270,7 @@
 			lanes-per-direction = <2>;
 			clock-names = "ref_clk_src",
 				      "ref_aux_clk";
-			clocks = <&clock_rpmh RPMH_CXO_CLK>,
+			clocks = <&clock_rpmh LAHAINA_RPMH_CXO_CLK>,
 				 <&clock_gcc GCC_UFS_PHY_PHY_AUX_CLK>;
 			resets = <&ufshc_mem 0>;
 			status = "disabled";
@@ -309,7 +309,7 @@
 				<&clock_gcc GCC_UFS_PHY_AHB_CLK>,
 				<&clock_gcc GCC_UFS_PHY_UNIPRO_CORE_CLK>,
 				<&clock_gcc GCC_UFS_PHY_ICE_CORE_CLK>,
-				<&clock_rpmh RPMH_CXO_CLK>,
+				<&clock_rpmh LAHAINA_RPMH_CXO_CLK>,
 				<&clock_gcc GCC_UFS_PHY_TX_SYMBOL_0_CLK>,
 				<&clock_gcc GCC_UFS_PHY_RX_SYMBOL_0_CLK>,
 				<&clock_gcc GCC_UFS_PHY_RX_SYMBOL_1_CLK>;
