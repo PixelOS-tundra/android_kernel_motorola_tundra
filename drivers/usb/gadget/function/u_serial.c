@@ -79,7 +79,8 @@
  */
 #define QUEUE_SIZE		16
 #define WRITE_BUF_SIZE		8192		/* TX only */
-#define GS_CONSOLE_BUF_SIZE	8192
+/* DEBUG (k61 bring-up): hold the whole boot log until the host opens the port */
+#define GS_CONSOLE_BUF_SIZE	(256 * 1024)
 
 /* Prevents race conditions while accessing gser->ioport */
 static DEFINE_SPINLOCK(serial_port_lock);
