@@ -91,6 +91,13 @@ struct arm_smmu_option_prop {
 	const char *prop;
 };
 
+
+/* DEBUG (k61.stop bring-up): step trace that reaches ramoops before a hang */
+#define k61dbg(fmt, ...) do {					\
+	pr_info("k61dbg: " fmt "\n", ##__VA_ARGS__);		\
+	mb();							\
+} while (0)
+
 static struct arm_smmu_option_prop arm_smmu_options[] = {
 	{ ARM_SMMU_OPT_FATAL_ASF, "qcom,fatal-asf" },
 	{ ARM_SMMU_OPT_3LVL_TABLES, "qcom,use-3-lvl-tables" },
@@ -3746,9 +3753,13 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 	/* Check for RMRs and install bypass SMRs if any */
 	arm_smmu_rmr_install_bypass_smr(smmu);
 
+	k61dbg("%s: device reset", dev_name(dev));
 	arm_smmu_device_reset(smmu);
+	k61dbg("%s: test smr masks", dev_name(dev));
 	arm_smmu_test_smr_masks(smmu);
+	k61dbg("%s: interrupt selftest", dev_name(dev));
 	arm_smmu_interrupt_selftest(smmu);
+	k61dbg("%s: reset done", dev_name(dev));
 
 	/*
 	 * We want to avoid touching dev->power.lock in fastpaths unless
