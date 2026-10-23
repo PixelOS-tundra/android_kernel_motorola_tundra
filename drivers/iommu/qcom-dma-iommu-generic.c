@@ -24,6 +24,7 @@
 #include <linux/dma-map-ops.h>
 #include <linux/dma-mapping.h>
 #include <linux/qcom-dma-mapping.h>
+#include <linux/of.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/iommu.h>
 #include <linux/qcom-iommu-util.h>
@@ -33,6 +34,7 @@
 
 static bool probe_finished;
 static struct device *qcom_dma_iommu_dev;
+static struct platform_device *qcom_dma_iommu_legacy_pdev;
 static struct cma *qcom_dma_contiguous_default_area;
 
 struct pci_host_bridge *qcom_pci_find_host_bridge(struct pci_bus *bus)
@@ -745,12 +747,19 @@ static int qcom_dma_iommu_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	/* Should be connected to linux,cma-default node */
-	ret = of_reserved_mem_device_init_by_idx(dev, dev->of_node, 0);
-	if (ret)
-		return ret;
+	/*
+	 * Should be connected to linux,cma-default node. The legacy device
+	 * has no DT node and uses the default CMA area directly.
+	 */
+	if (dev->of_node) {
+		ret = of_reserved_mem_device_init_by_idx(dev, dev->of_node, 0);
+		if (ret)
+			return ret;
 
-	qcom_dma_contiguous_default_area = dev->cma_area;
+		qcom_dma_contiguous_default_area = dev->cma_area;
+	} else {
+		qcom_dma_contiguous_default_area = dev_get_cma_area(dev);
+	}
 	if (!qcom_dma_contiguous_default_area) {
 		dev_err(dev, "Unable to find cma area\n");
 		return -EINVAL;
@@ -806,10 +815,39 @@ static struct platform_driver qcom_dma_iommu_driver = {
 
 int __init qcom_dma_iommu_generic_driver_init(void)
 {
-	return platform_driver_register(&qcom_dma_iommu_driver);
+	struct platform_device *pdev;
+	struct device_node *np;
+	int ret;
+
+	ret = platform_driver_register(&qcom_dma_iommu_driver);
+	if (ret)
+		return ret;
+
+	np = of_find_compatible_node(NULL, NULL, "qcom,iommu-dma");
+	if (np && of_device_is_available(np)) {
+		of_node_put(np);
+		return 0;
+	}
+	of_node_put(np);
+
+	/*
+	 * Legacy (5.4) DTs have no qcom,iommu-dma node, and the SMMUs wait
+	 * for this device before probing. Register it by name, backed by
+	 * the linux,cma-default area.
+	 */
+	pdev = platform_device_register_simple("qcom_dma_iommu",
+					       PLATFORM_DEVID_NONE, NULL, 0);
+	if (IS_ERR(pdev)) {
+		platform_driver_unregister(&qcom_dma_iommu_driver);
+		return PTR_ERR(pdev);
+	}
+	qcom_dma_iommu_legacy_pdev = pdev;
+
+	return 0;
 }
 
 void qcom_dma_iommu_generic_driver_exit(void)
 {
+	platform_device_unregister(qcom_dma_iommu_legacy_pdev);
 	platform_driver_unregister(&qcom_dma_iommu_driver);
 }
