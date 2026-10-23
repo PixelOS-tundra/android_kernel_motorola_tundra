@@ -7,7 +7,8 @@
 # the first-stage fstab, so a misbehaving storage driver can never make
 # fs_mgr fsck or reformat /metadata or /data.
 # DTB=<file> overrides the DTB put into vendor_boot; DTB=keep keeps the one
-# already in the input vendor_boot.img.
+# already in the input vendor_boot.img. BOOT_CMDLINE=<args> sets the boot.img
+# cmdline.
 # Usage: ./pack-tundra.sh <dir with boot.img + vendor_boot.img> [dest-dir]
 set -e
 SRC=$(cd "$(dirname "$0")" && pwd)
@@ -43,7 +44,8 @@ if [ "$SAFE_FSTAB" = 1 ]; then
 fi
 
 eval python3 "$MKB/mkbootimg.py" "$(cat "$tmp/boot.args")" \
-	--kernel "$OUT/arch/arm64/boot/Image" --output "$DEST/boot.img"
+	--kernel "$OUT/arch/arm64/boot/Image" ${BOOT_CMDLINE:+--cmdline "\"$BOOT_CMDLINE\""} \
+	--output "$DEST/boot.img"
 [ "$DTB" = keep ] && DTB=$tmp/vendor_boot/dtb
 eval python3 "$MKB/mkbootimg.py" "$(cat "$tmp/vendor_boot.args")" \
 	--dtb "$DTB" --vendor_ramdisk "$vendor_ramdisk" \
