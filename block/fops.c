@@ -505,13 +505,21 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 	/*
 	 * DEBUG (k61.stop=init/init2): userspace may not open storage (the
 	 * UFS LUNs and dm devices on top of them) for writing. Loop and zram
-	 * devices, which apexd and swap use, stay writable.
+	 * devices, which apexd and swap use, stay writable, and so does the
+	 * TZ secure storage partition (ssd), which qseecomd serves to the TAs
+	 * on every boot.
 	 */
 	if (k61_stop_init && (filp->f_mode & FMODE_WRITE) &&
 	    (!strncmp(bdev->bd_disk->disk_name, "sd", 2) ||
-	     !strncmp(bdev->bd_disk->disk_name, "dm-", 3)))
-		k61_stop_guard_trip("refusing write open of %pD (%pg)", filp,
-				    bdev);
+	     !strncmp(bdev->bd_disk->disk_name, "dm-", 3))) {
+		if (bdev->bd_meta_info &&
+		    !strcmp(bdev->bd_meta_info->volname, "ssd"))
+			pr_info("k61.stop: allowing write open of %pg (ssd) by %s[%d]\n",
+				bdev, current->comm, task_pid_nr(current));
+		else
+			k61_stop_guard_trip("refusing write open of %pD (%pg)",
+					    filp, bdev);
+	}
 
 	filp->private_data = bdev;
 	filp->f_mapping = bdev->bd_inode->i_mapping;
