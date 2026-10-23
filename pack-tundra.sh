@@ -10,6 +10,11 @@
 # already in the input vendor_boot.img. BOOT_CMDLINE=<args> sets the boot.img
 # cmdline (e.g. "rdinit=/k61-stop init=/k61-stop" to stop before userspace
 # when testing with fastboot boot on the stable slot).
+# FIRST_STAGE_FSTAB=1 adds first_stage_ramdisk/fstab.default to the boot.img
+# ramdisk. First-stage init reads it before the stock fstab.qcom
+# (androidboot.fstab_suffix=default), and it holds only the read-only
+# system/system_ext/vendor/product lines, so a fastboot boot test (which uses
+# the stable slot's own vendor_boot) never mounts /metadata or /data.
 # Usage: ./pack-tundra.sh <dir with boot.img + vendor_boot.img> [dest-dir]
 set -e
 SRC=$(cd "$(dirname "$0")" && pwd)
@@ -21,6 +26,7 @@ IN=$(cd "$1" && pwd)
 DEST=${2:-$SRC/../images/test}
 DTS=$OUT/arch/arm64/boot/dts/vendor/qcom
 SAFE_FSTAB=${SAFE_FSTAB:-1}
+FIRST_STAGE_FSTAB=${FIRST_STAGE_FSTAB:-0}
 DTB=${DTB:-$DTS/lahaina-tundra-base.dtb}
 
 mkdir -p "$DEST"
@@ -44,8 +50,32 @@ if [ "$SAFE_FSTAB" = 1 ]; then
 	vendor_ramdisk=$tmp/vendor_ramdisk.safe
 fi
 
+boot_ramdisk=$tmp/boot/ramdisk
+if [ "$FIRST_STAGE_FSTAB" = 1 ]; then
+	fs=$tmp/fs/first_stage_ramdisk
+	mkdir -p -m 755 "$fs"
+	lz4 -dc "$tmp/vendor_boot/vendor_ramdisk" |
+		(cd "$tmp/fs" && cpio -i --quiet first_stage_ramdisk/fstab.qcom)
+	awk '$2 ~ /^\/(system|system_ext|vendor|product)$/ && $4 == "ro" &&
+	     $5 ~ /(^|,)first_stage_mount(,|$)/' "$fs/fstab.qcom" > "$fs/fstab.default"
+	rm "$fs/fstab.qcom"
+	chmod 644 "$fs/fstab.default"
+	if [ "$(wc -l < "$fs/fstab.default")" != 4 ]; then
+		echo "unexpected first-stage fstab:" >&2
+		cat "$fs/fstab.default" >&2
+		exit 1
+	fi
+	cat "$fs/fstab.default"
+	cp "$boot_ramdisk" "$tmp/boot_ramdisk"
+	(cd "$tmp/fs" && printf "first_stage_ramdisk\nfirst_stage_ramdisk/fstab.default\n" |
+		cpio -o -H newc -R 0:0 --quiet) |
+		lz4 -l -12 --favor-decSpeed >> "$tmp/boot_ramdisk"
+	boot_ramdisk=$tmp/boot_ramdisk
+fi
+
 eval python3 "$MKB/mkbootimg.py" "$(cat "$tmp/boot.args")" \
-	--kernel "$OUT/arch/arm64/boot/Image" ${BOOT_CMDLINE:+--cmdline "\"$BOOT_CMDLINE\""} \
+	--kernel "$OUT/arch/arm64/boot/Image" --ramdisk "$boot_ramdisk" \
+	${BOOT_CMDLINE:+--cmdline "\"$BOOT_CMDLINE\""} \
 	--output "$DEST/boot.img"
 [ "$DTB" = keep ] && DTB=$tmp/vendor_boot/dtb
 eval python3 "$MKB/mkbootimg.py" "$(cat "$tmp/vendor_boot.args")" \
