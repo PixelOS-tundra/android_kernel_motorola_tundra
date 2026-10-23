@@ -1929,7 +1929,7 @@ static int qsmmuv500_tbu_probe(struct platform_device *pdev)
 	struct qsmmuv500_tbu_device *tbu;
 	struct resource *res;
 	const __be32 *cell;
-	int ret, len;
+	int len;
 
 	tbu = devm_kzalloc(dev, sizeof(*tbu), GFP_KERNEL);
 	if (!tbu)
@@ -1969,9 +1969,12 @@ static int qsmmuv500_tbu_probe(struct platform_device *pdev)
 	tbu->sid_start = of_read_number(cell, 1);
 	tbu->num_sids = of_read_number(cell + 1, 1);
 
-	ret = of_property_read_u32(dev->of_node, "qcom,iova-width", &tbu->iova_width);
-	if (ret < 0)
-		return ret;
+	/*
+	 * Legacy (5.4) TBU nodes have no qcom,iova-width; it only bounds
+	 * ECATS lookups, so fall back to the 36-bit TBU input width.
+	 */
+	tbu->iova_width = 36;
+	of_property_read_u32(dev->of_node, "qcom,iova-width", &tbu->iova_width);
 
 	dev_set_drvdata(dev, tbu);
 	return 0;
