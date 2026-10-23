@@ -1676,26 +1676,33 @@ static bool bringup_stop;
 /*
  * "k61.stop=init" instead lets first-stage init run and panics when PID 1
  * executes /system/bin/init, i.e. once the first-stage mounts are done and
- * before second stage. Writable block mounts and block device write opens
- * panic as well (see linux/k61-stop.h), and so does not getting there
- * within K61_STOP_TIMEOUT seconds, so a hang still ends in a warm reset.
+ * before second stage. "k61.stop=init2" lets second stage run too. In both
+ * modes writable block mounts, storage write opens and reboots from
+ * userspace trip the guard (see linux/k61-stop.h), and so does still
+ * running after the timeout, so a hang still ends in a warm reset.
  */
 bool k61_stop_init;
-#define K61_STOP_TIMEOUT	60
+bool k61_stop_exec;
+static unsigned int k61_stop_timeout_s;
 
 static void k61_stop_timeout(struct timer_list *t)
 {
-	panic("k61.stop: /system/bin/init not reached within %ds",
-	      K61_STOP_TIMEOUT);
+	panic("k61.stop: timeout after %us", k61_stop_timeout_s);
 }
 static DEFINE_TIMER(k61_stop_timer, k61_stop_timeout);
 
 static int __init bringup_stop_setup(char *str)
 {
-	if (!strcmp(str, "=init"))
+	if (!strcmp(str, "=init")) {
 		k61_stop_init = true;
-	else
+		k61_stop_exec = true;
+		k61_stop_timeout_s = 60;
+	} else if (!strcmp(str, "=init2")) {
+		k61_stop_init = true;
+		k61_stop_timeout_s = 120;
+	} else {
 		bringup_stop = true;
+	}
 	return 1;
 }
 __setup("k61.stop", bringup_stop_setup);
@@ -1712,6 +1719,25 @@ static int __init bringup_hold_setup(char *str)
 	return !kstrtouint(str, 0, &bringup_hold);
 }
 __setup("k61.hold=", bringup_hold_setup);
+
+/* Called by the k61.stop=init/init2 guards; keeps running k61.hold seconds */
+void k61_stop_guard_trip(const char *fmt, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	va_start(args, fmt);
+	vaf.fmt = fmt;
+	vaf.va = &args;
+	pr_emerg("k61.stop: %pV\n", &vaf);
+	va_end(args);
+
+	if (bringup_hold) {
+		pr_emerg("k61.stop: holding for %us\n", bringup_hold);
+		ssleep(bringup_hold);
+	}
+	panic("k61.stop: guard tripped");
+}
 
 static int __ref kernel_init(void *unused)
 {
@@ -1740,8 +1766,9 @@ static int __ref kernel_init(void *unused)
 	if (k61_stop_init) {
 		wait_for_device_probe();
 		driver_probe_state_dump();
-		mod_timer(&k61_stop_timer, jiffies + K61_STOP_TIMEOUT * HZ);
-		pr_info("k61.stop: init mode, stopping at the exec of /system/bin/init\n");
+		mod_timer(&k61_stop_timer, jiffies + k61_stop_timeout_s * HZ);
+		pr_info("k61.stop: %s mode, guards on, timeout %us\n",
+			k61_stop_exec ? "init" : "init2", k61_stop_timeout_s);
 	}
 
 	system_state = SYSTEM_FREEING_INITMEM;

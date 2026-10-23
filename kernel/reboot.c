@@ -11,6 +11,7 @@
 #include <linux/ctype.h>
 #include <linux/export.h>
 #include <linux/kexec.h>
+#include <linux/k61-stop.h>
 #include <linux/kmod.h>
 #include <linux/kmsg_dump.h>
 #include <linux/reboot.h>
@@ -268,6 +269,9 @@ static void do_kernel_restart_prepare(void)
  */
 void kernel_restart(char *cmd)
 {
+	/* DEBUG (k61.stop=init/init2): no reboots from userspace */
+	if (k61_stop_init)
+		k61_stop_guard_trip("refusing restart (%s)", cmd ?: "");
 	kernel_restart_prepare(cmd);
 	do_kernel_restart_prepare();
 	migrate_to_reboot_cpu();
@@ -296,6 +300,8 @@ static void kernel_shutdown_prepare(enum system_states state)
  */
 void kernel_halt(void)
 {
+	if (k61_stop_init)
+		k61_stop_guard_trip("refusing halt");
 	kernel_shutdown_prepare(SYSTEM_HALT);
 	migrate_to_reboot_cpu();
 	syscore_shutdown();
@@ -681,6 +687,8 @@ EXPORT_SYMBOL_GPL(kernel_can_power_off);
  */
 void kernel_power_off(void)
 {
+	if (k61_stop_init)
+		k61_stop_guard_trip("refusing power off");
 	kernel_shutdown_prepare(SYSTEM_POWER_OFF);
 	do_kernel_power_off_prepare();
 	migrate_to_reboot_cpu();

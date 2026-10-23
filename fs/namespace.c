@@ -2727,7 +2727,7 @@ static int do_remount(struct path *path, int ms_flags, int sb_flags,
 
 	/* DEBUG (k61.stop=init): no writable block filesystem mounts */
 	if (k61_stop_init && sb->s_bdev && !(sb_flags & SB_RDONLY))
-		panic("k61.stop: refusing rw remount of %s", sb->s_id);
+		k61_stop_guard_trip("refusing rw remount of %s", sb->s_id);
 
 	fc = fs_context_for_reconfigure(path->dentry, sb_flags, MS_RMT_MASK);
 	if (IS_ERR(fc))
@@ -3054,8 +3054,8 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 	/* DEBUG (k61.stop=init): no writable block filesystem mounts */
 	if (k61_stop_init && (type->fs_flags & FS_REQUIRES_DEV) &&
 	    !(sb_flags & SB_RDONLY))
-		panic("k61.stop: refusing rw mount of %s on %pd (%s)",
-		      name ?: "(null)", path->dentry, fstype);
+		k61_stop_guard_trip("refusing rw mount of %s on %pd (%s)",
+				    name ?: "(null)", path->dentry, fstype);
 
 	if (type->fs_flags & FS_HAS_SUBTYPE) {
 		subtype = strchr(fstype, '.');

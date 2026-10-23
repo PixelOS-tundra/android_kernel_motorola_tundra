@@ -491,10 +491,6 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 	filp->f_flags |= O_LARGEFILE;
 	filp->f_mode |= FMODE_NOWAIT | FMODE_BUF_RASYNC;
 
-	/* DEBUG (k61.stop=init): no block device write opens from userspace */
-	if (k61_stop_init && (filp->f_mode & FMODE_WRITE))
-		panic("k61.stop: refusing write open of %pD", filp);
-
 	if (filp->f_flags & O_NDELAY)
 		filp->f_mode |= FMODE_NDELAY;
 	if (filp->f_flags & O_EXCL)
@@ -505,6 +501,17 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 	bdev = blkdev_get_by_dev(inode->i_rdev, filp->f_mode, filp);
 	if (IS_ERR(bdev))
 		return PTR_ERR(bdev);
+
+	/*
+	 * DEBUG (k61.stop=init/init2): userspace may not open storage (the
+	 * UFS LUNs and dm devices on top of them) for writing. Loop and zram
+	 * devices, which apexd and swap use, stay writable.
+	 */
+	if (k61_stop_init && (filp->f_mode & FMODE_WRITE) &&
+	    (!strncmp(bdev->bd_disk->disk_name, "sd", 2) ||
+	     !strncmp(bdev->bd_disk->disk_name, "dm-", 3)))
+		k61_stop_guard_trip("refusing write open of %pD (%pg)", filp,
+				    bdev);
 
 	filp->private_data = bdev;
 	filp->f_mapping = bdev->bd_inode->i_mapping;
