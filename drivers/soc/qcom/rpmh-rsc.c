@@ -39,6 +39,12 @@
 
 #include <linux/ipc_logging.h>
 
+/* DEBUG (k61.stop bring-up): step trace that reaches ramoops before a hang */
+#define k61dbg(fmt, ...) do {					\
+	pr_info("k61dbg: " fmt "\n", ##__VA_ARGS__);		\
+	mb();							\
+} while (0)
+
 #define RSC_DRV_IPC_LOG_SIZE		2
 
 /* DRV ID Register */
@@ -562,6 +568,7 @@ static irqreturn_t tcs_tx_done(int irq, void *p)
 	u32 enable;
 
 	irq_status = readl_relaxed(drv->tcs_base + drv->regs[RSC_DRV_IRQ_STATUS]);
+	k61dbg("%s: tx_done irq_status %#lx", drv->name, irq_status);
 
 	for_each_set_bit(i, &irq_status, BITS_PER_TYPE(u32)) {
 		req = get_req_from_tcs(drv, i, &ch);
@@ -829,8 +836,12 @@ int rpmh_rsc_send_data(struct rsc_drv *drv, const struct tcs_request *msg, int c
 	 * - The interrupt can't go off until we trigger w/ the last line
 	 *   of __tcs_set_trigger() below.
 	 */
+	k61dbg("%s: send tcs %d state %d n %u addr0 %#x data0 %#x wait %d",
+	       drv->name, tcs_id, msg->state, msg->num_cmds,
+	       msg->cmds[0].addr, msg->cmds[0].data, msg->wait_for_compl);
 	__tcs_buffer_write(drv, tcs_id, 0, msg);
 	__tcs_set_trigger(drv, tcs_id, true);
+	k61dbg("%s: tcs %d triggered", drv->name, tcs_id);
 	ipc_log_string(drv->ipc_log_ctx, "TCS trigger: m=%d wait_for_compl=%u",
 		       tcs_id, msg->wait_for_compl);
 

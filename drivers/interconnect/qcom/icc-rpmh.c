@@ -20,6 +20,12 @@
 #include "icc-rpmh.h"
 #include "qnoc-qos.h"
 
+/* DEBUG (k61.stop bring-up): step trace that reaches ramoops before a hang */
+#define k61dbg(fmt, ...) do {					\
+	pr_info("k61dbg: " fmt "\n", ##__VA_ARGS__);		\
+	mb();							\
+} while (0)
+
 static LIST_HEAD(qnoc_probe_list);
 static DEFINE_MUTEX(probe_list_lock);
 
@@ -244,7 +250,9 @@ int qcom_icc_bcm_init(struct qcom_icc_provider *qp, struct qcom_icc_bcm *bcm,
 		voter = qp->voters[bcm->voter_idx];
 		qcom_icc_bcm_voter_add(voter, bcm);
 
+		k61dbg("%s: keepalive vote %s", dev_name(dev), bcm->name);
 		ret = qcom_icc_bcm_voter_commit(voter);
+		k61dbg("%s: keepalive vote %s -> %d", dev_name(dev), bcm->name, ret);
 		if (ret) {
 			dev_err(dev, "failed to place initial vote for %s\n",
 				bcm->name);
@@ -286,7 +294,9 @@ static int enable_qos_deps(struct qcom_icc_provider *qp)
 
 			voter = qp->voters[bcm->voter_idx];
 			qcom_icc_bcm_voter_add(voter, bcm);
+			k61dbg("%s: qos proxy vote %s", dev_name(qp->dev), bcm->name);
 			ret = qcom_icc_bcm_voter_commit(voter);
+			k61dbg("%s: qos proxy vote %s -> %d", dev_name(qp->dev), bcm->name, ret);
 
 			bcm->keepalive = keepalive;
 
@@ -298,7 +308,9 @@ static int enable_qos_deps(struct qcom_icc_provider *qp)
 		}
 	}
 
+	k61dbg("%s: enable %d qos clks", dev_name(qp->dev), qp->num_clks);
 	ret = clk_bulk_prepare_enable(qp->num_clks, qp->clks);
+	k61dbg("%s: enable qos clks -> %d", dev_name(qp->dev), ret);
 	if (ret) {
 		dev_err(qp->dev, "failed to enable clocks for QoS\n");
 		return ret;
@@ -313,6 +325,7 @@ static void disable_qos_deps(struct qcom_icc_provider *qp)
 	struct bcm_voter *voter;
 	int i;
 
+	k61dbg("%s: disable qos clks", dev_name(qp->dev));
 	clk_bulk_disable_unprepare(qp->num_clks, qp->clks);
 
 	for (i = 0; i < qp->num_bcms; i++) {
@@ -320,9 +333,11 @@ static void disable_qos_deps(struct qcom_icc_provider *qp)
 		if (bcm_needs_qos_proxy(bcm)) {
 			voter = qp->voters[bcm->voter_idx];
 			qcom_icc_bcm_voter_add(voter, bcm);
+			k61dbg("%s: drop qos proxy vote %s", dev_name(qp->dev), bcm->name);
 			qcom_icc_bcm_voter_commit(voter);
 		}
 	}
+	k61dbg("%s: qos deps released", dev_name(qp->dev));
 }
 
 int qcom_icc_rpmh_configure_qos(struct qcom_icc_provider *qp)
@@ -340,8 +355,10 @@ int qcom_icc_rpmh_configure_qos(struct qcom_icc_provider *qp)
 		if (!qnode)
 			continue;
 
-		if (qnode->qosbox)
+		if (qnode->qosbox) {
+			k61dbg("%s: set_qos %s", dev_name(qp->dev), qnode->name);
 			qnode->noc_ops->set_qos(qnode);
+		}
 	}
 
 	disable_qos_deps(qp);
@@ -437,6 +454,7 @@ int qcom_icc_rpmh_probe(struct platform_device *pdev)
 	qnodes = desc->nodes;
 	num_nodes = desc->num_nodes;
 
+	k61dbg("%s: icc probe", dev_name(dev));
 	qp = devm_kzalloc(dev, sizeof(*qp), GFP_KERNEL);
 	if (!qp)
 		return -ENOMEM;
