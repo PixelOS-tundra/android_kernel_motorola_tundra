@@ -6638,6 +6638,19 @@ static int vbus_regulator_get(struct dwc3_msm *mdwc)
 	return 0;
 }
 
+/*
+ * DEBUG (k61 bring-up): with "k61.usb_device" start in device role. On
+ * lahaina the role comes from pmic_glink UCSI, which needs the ADSP.
+ */
+static bool k61_usb_device;
+
+static int __init k61_usb_device_setup(char *str)
+{
+	k61_usb_device = true;
+	return 1;
+}
+__setup("k61.usb_device", k61_usb_device_setup);
+
 static int dwc3_msm_probe(struct platform_device *pdev)
 {
 	struct device_node *node = pdev->dev.of_node, *dwc3_node;
@@ -6827,6 +6840,12 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	if (mdwc->pm_qos_latency)
 		cpu_latency_qos_add_request(&mdwc->pm_qos_req_dma,
 					    PM_QOS_DEFAULT_VALUE);
+
+	/* DEBUG (k61 bring-up): nothing reports the role without the ADSP */
+	if (k61_usb_device && mdwc->role_switch) {
+		dev_info(mdwc->dev, "k61.usb_device: forcing device role\n");
+		dwc3_msm_set_role(mdwc, USB_ROLE_DEVICE);
+	}
 
 	return 0;
 
