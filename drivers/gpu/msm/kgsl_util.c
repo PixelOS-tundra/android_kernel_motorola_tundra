@@ -105,6 +105,24 @@ int kgsl_scm_gpu_init_regs(struct device *dev, u32 gpu_req)
  */
 #define GPU_PASID 13
 
+/*
+ * Downstream 5.4 device trees (e.g. lahaina) describe the zap shader as a
+ * PIL node, qcom,kgsl-hyp { compatible = "qcom,pil-tz-generic";
+ * qcom,pas-id = <13>; memory-region = <&pil_gpu_mem>; }, instead of a
+ * zap-shader child of the GPU node. Use its memory region.
+ */
+static struct device_node *kgsl_legacy_zap_node(void)
+{
+	struct device_node *np = NULL;
+	u32 pasid;
+
+	while ((np = of_find_compatible_node(np, NULL, "qcom,pil-tz-generic")))
+		if (!of_property_read_u32(np, "qcom,pas-id", &pasid) &&
+		    pasid == GPU_PASID)
+			return np;
+	return NULL;
+}
+
 int kgsl_zap_shader_load(struct device *dev, const char *name)
 {
 	struct device_node *np, *mem_np;
@@ -116,6 +134,8 @@ int kgsl_zap_shader_load(struct device *dev, const char *name)
 	int ret;
 
 	np = of_get_child_by_name(dev->of_node, "zap-shader");
+	if (!np)
+		np = kgsl_legacy_zap_node();
 	if (!np) {
 		dev_err(dev, "zap-shader node not found. Please update the device tree\n");
 		return -ENODEV;
