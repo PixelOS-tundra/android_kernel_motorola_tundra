@@ -6,6 +6,7 @@
  */
 
 #include <linux/crypto-qti-common.h>
+#include <linux/k61-stop.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/mod_devicetable.h>
@@ -365,6 +366,10 @@ int crypto_qti_keyslot_program(const struct ice_mmio_data *mmio_data,
 
 	err = crypto_qti_program_key(mmio_data, key, slot,
 				data_unit_mask, capid, storage_type);
+	/* DEBUG (k61.stop): trace inline crypto key programming */
+	if (k61_stop_init)
+		pr_info("k61.stop: ICE keyslot %u: program %u-byte key -> %d\n",
+			slot, key->size, err);
 	if (err) {
 		pr_err("%s: program key failed with error %d\n", __func__, err);
 		err = crypto_qti_invalidate_key(mmio_data, slot, storage_type);
