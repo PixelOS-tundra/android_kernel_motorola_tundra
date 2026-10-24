@@ -7188,7 +7188,11 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		/* Setup widebus support */
 		display_mode.priv_info->widebus_support = ctrl->ctrl->hw.widebus_support;
 
-		if (display->cmdline_timing == display_mode.mode_idx) {
+		/*
+		 * display_mode was just zeroed, so its mode_idx is still 0
+		 * here; the bootloader's :timingN counts the timing nodes.
+		 */
+		if (display->cmdline_timing == mode_idx) {
 			topology_override = display->cmdline_topology;
 			is_preferred = true;
 		}
