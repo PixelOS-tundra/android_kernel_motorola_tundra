@@ -1,72 +1,20 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
-KDIR := $(TOP)/kernel_platform/msm-kernel
-
-ifeq ($(CONFIG_ARCH_WAIPIO), y)
-ifeq ($(CONFIG_ARCH_QTI_VM), y)
-	include $(DISPLAY_ROOT)/config/gki_waipiodisptui.conf
-	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_waipiodisptuiconf.h
-else
-	include $(DISPLAY_ROOT)/config/gki_waipiodisp.conf
-	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_waipiodispconf.h
-endif
+ifeq ($(DISPLAY_ROOT),)
+DISPLAY_ROOT=$(srctree)/techpack/display
 endif
 
-ifeq ($(CONFIG_ARCH_NEO), y)
-	include $(DISPLAY_ROOT)/config/gki_neodisp.conf
-	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_neodispconf.h
+ifeq ($(CONFIG_QTI_DISPLAY_LAHAINA), y)
+	include $(DISPLAY_ROOT)/config/lahainadisp.conf
+	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/lahainadispconf.h
 endif
 
-ifeq ($(CONFIG_ARCH_PARROT), y)
-	include $(DISPLAY_ROOT)/config/gki_parrotdisp.conf
-	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_parrotdispconf.h
-endif
-
-ifeq ($(CONFIG_ARCH_PITTI), y)
-	include $(DISPLAY_ROOT)/config/gki_pittidisp.conf
-	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_pittidispconf.h
-endif
-
-ifeq ($(CONFIG_ARCH_NIOBE), y)
-	include $(DISPLAY_ROOT)/config/gki_niobedisp.conf
-	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_niobedispconf.h
-endif
-
-ifeq ($(CONFIG_ARCH_PINEAPPLE), y)
-ifeq ($(CONFIG_ARCH_QTI_VM), y)
-    include $(DISPLAY_ROOT)/config/gki_pineappledisptui.conf
-    LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_pineappledisptuiconf.h
-else ifeq ($(BOARD_PLATFORM), volcano)
-    include $(DISPLAY_ROOT)/config/gki_volcanodisp.conf
-    LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_volcanodispconf.h
-else
-	include $(DISPLAY_ROOT)/config/gki_pineappledisp.conf
-	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_pineappledispconf.h
-endif
-endif
-
-ifeq ($(CONFIG_ARCH_KALAMA), y)
-ifeq ($(CONFIG_ARCH_QTI_VM), y)
-        include $(DISPLAY_ROOT)/config/gki_kalamadisptui.conf
-        LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_kalamadisptuiconf.h
-else
-	include $(DISPLAY_ROOT)/config/gki_kalamadisp.conf
-	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_kalamadispconf.h
-endif
-endif
-
-ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_ARCH_SA8195)))
-	include $(DISPLAY_ROOT)/config/augen3disp.conf
-	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen3dispconf.h
-endif
-
-LINUX_INC +=	-I$(KERNEL_SRC)/include/linux \
-		-I$(KERNEL_SRC)/include/linux/drm
+LINUX_INC +=	-I$(srctree)/include/linux \
+		-I$(srctree)/include/linux/drm
 
 LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/include \
-	-I$(KERNEL_ROOT)/drivers/clk/qcom \
-	-I$(KERNEL_SRC)/drivers/clk/qcom \
+	-I$(srctree)/drivers/clk/qcom \
 	-I$(DISPLAY_ROOT)/include/linux \
 	-I$(DISPLAY_ROOT)/rotator \
 	-I$(DISPLAY_ROOT)/msm \
@@ -93,8 +41,6 @@ ifeq ($(call cc-option-yn, -Wmaybe-uninitialized),y)
 EXTRA_CFLAGS += -Wmaybe-uninitialized
 endif
 
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/sm8650-modules/qcom/opensource/display-drivers/hdcp/Module.symvers
-KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/sm8650-modules/qcom/opensource/display-drivers/msm/Module.symvers
 
 ifeq ($(call cc-option-yn, -Wheader-guard),y)
 EXTRA_CFLAGS += -Wheader-guard
@@ -109,7 +55,7 @@ CDEFINES += -DMULTI_IF_NAME=\"$(CHIP_NAME)\"
 endif
 
 ######### CONFIG_DRM_MSM ########
-obj-m += msm_drm.o
+obj-$(CONFIG_DISPLAY_BUILD) += msm_drm.o
 
 msm_drm-$(CONFIG_HDCP_QSEECOM) := ../hdcp/msm_hdcp.o \
 				  dp/dp_hdcp2p2.o \

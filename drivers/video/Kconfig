@@ -27,6 +27,8 @@ source "drivers/gpu/drm/Kconfig"
 
 source "drivers/gpu/msm/Kconfig"
 
+source "techpack/display/Kconfig"
+
 menu "Frame buffer Devices"
 source "drivers/video/fbdev/Kconfig"
 endmenu
