@@ -263,6 +263,7 @@ enum {
 	CPU_MASK_PERF,
 	PERF_CPU_DMA_LATENCY,
 	PERF_CPU_IRQ_LATENCY,
+	PERF_DRAM_CHANNELS,
 	PERF_PROP_MAX,
 };
 
@@ -271,6 +272,12 @@ enum {
 	QOS_DANGER_LUT,
 	QOS_SAFE_LUT,
 	QOS_CREQ_LUT,
+	QOS_CREQ_LUT_LINEAR,
+	QOS_CREQ_LUT_MACROTILE,
+	QOS_CREQ_LUT_NRT,
+	QOS_CREQ_LUT_CWB,
+	QOS_CREQ_LUT_MACROTILE_QSEED,
+	QOS_CREQ_LUT_LINEAR_QSEED,
 	QOS_PROP_MAX,
 };
 
@@ -693,6 +700,7 @@ static struct sde_prop_type sde_perf_prop[] = {
 			PROP_TYPE_U32},
 	{PERF_CPU_IRQ_LATENCY, "qcom,sde-qos-cpu-irq-latency", false,
 			PROP_TYPE_U32},
+	{PERF_DRAM_CHANNELS, "qcom,sde-dram-channels", false, PROP_TYPE_U32},
 };
 
 static struct sde_prop_type sde_qos_prop[] = {
@@ -701,6 +709,18 @@ static struct sde_prop_type sde_qos_prop[] = {
 	{QOS_DANGER_LUT, "qcom,sde-danger-lut", false, PROP_TYPE_U32_ARRAY},
 	{QOS_SAFE_LUT, "qcom,sde-safe-lut", false, PROP_TYPE_U32_ARRAY},
 	{QOS_CREQ_LUT, "qcom,sde-creq-lut", false, PROP_TYPE_U32_ARRAY},
+	{QOS_CREQ_LUT_LINEAR, "qcom,sde-qos-lut-linear", false,
+			PROP_TYPE_U32_ARRAY},
+	{QOS_CREQ_LUT_MACROTILE, "qcom,sde-qos-lut-macrotile", false,
+			PROP_TYPE_U32_ARRAY},
+	{QOS_CREQ_LUT_NRT, "qcom,sde-qos-lut-nrt", false,
+			PROP_TYPE_U32_ARRAY},
+	{QOS_CREQ_LUT_CWB, "qcom,sde-qos-lut-cwb", false,
+			PROP_TYPE_U32_ARRAY},
+	{QOS_CREQ_LUT_MACROTILE_QSEED, "qcom,sde-qos-lut-macrotile-qseed",
+			false, PROP_TYPE_U32_ARRAY},
+	{QOS_CREQ_LUT_LINEAR_QSEED, "qcom,sde-qos-lut-linear-qseed",
+			false, PROP_TYPE_U32_ARRAY},
 };
 
 static struct sde_prop_type sspp_prop[] = {
@@ -3801,13 +3821,21 @@ static int _sde_vbif_populate_qos_parsing(struct sde_mdss_cfg *sde_cfg,
 	int i, j, prop_index = VBIF_QOS_RT_REMAP;
 	u32 entries;
 	u32 ddr_list_index;
+	bool legacy;
 
 	for (i = VBIF_RT_CLIENT; ((i < VBIF_MAX_CLIENT) && (prop_index < VBIF_PROP_MAX));
 						i++, prop_index++) {
 		entries = 2 * sde_cfg->vbif_qos_nlvl;
 		vbif->qos_tbl[i].count = prop_count[prop_index];
 
-		ddr_list_index = (vbif->qos_tbl[i].count == entries) ?
+		/*
+		 * The lahaina 5.4 DT has one remap level per priority level,
+		 * which 5.4 programmed into both the RP and the LVL remap.
+		 */
+		legacy = sde_cfg->vbif_qos_nlvl &&
+				vbif->qos_tbl[i].count == sde_cfg->vbif_qos_nlvl;
+
+		ddr_list_index = (vbif->qos_tbl[i].count == entries || legacy) ?
 					0 : sde_cfg->ddr_list_index;
 
 		SDE_DEBUG("qos_tbl[%d].count=%u, ddr_list_index=%u\n",
@@ -3820,7 +3848,9 @@ static int _sde_vbif_populate_qos_parsing(struct sde_mdss_cfg *sde_cfg,
 		}
 
 		for (j = 0; j < entries; j++) {
-			vbif->qos_tbl[i].priority_lvl[j] =
+			vbif->qos_tbl[i].priority_lvl[j] = legacy ?
+					PROP_VALUE_ACCESS(prop_value, prop_index,
+					j % sde_cfg->vbif_qos_nlvl) :
 					PROP_VALUE_ACCESS(prop_value, prop_index,
 					entries * ddr_list_index + j);
 			SDE_DEBUG("client:%d, prop:%d, lvl[%d]=%u\n", i, prop_index, j,
@@ -4455,6 +4485,98 @@ static int _sde_perf_parse_dt_validate(struct device_node *np, int *prop_count)
 	return rc;
 }
 
+/*
+ * The lahaina 5.4 DT gives the QoS LUTs per refresh rate for six usages:
+ * qcom,sde-danger-lut/safe-lut as [fps][usage] and the creq LUTs as one
+ * qcom,sde-qos-lut-<usage> property per usage with a hi/lo pair per fps.
+ */
+enum {
+	LEGACY_QOS_LINEAR,
+	LEGACY_QOS_MACROTILE,
+	LEGACY_QOS_NRT,
+	LEGACY_QOS_CWB,
+	LEGACY_QOS_MACROTILE_QSEED,
+	LEGACY_QOS_LINEAR_QSEED,
+	LEGACY_QOS_MAX,
+};
+
+static const u32 legacy_qos_creq_prop[LEGACY_QOS_MAX] = {
+	[LEGACY_QOS_LINEAR] = QOS_CREQ_LUT_LINEAR,
+	[LEGACY_QOS_MACROTILE] = QOS_CREQ_LUT_MACROTILE,
+	[LEGACY_QOS_NRT] = QOS_CREQ_LUT_NRT,
+	[LEGACY_QOS_CWB] = QOS_CREQ_LUT_CWB,
+	[LEGACY_QOS_MACROTILE_QSEED] = QOS_CREQ_LUT_MACROTILE_QSEED,
+	[LEGACY_QOS_LINEAR_QSEED] = QOS_CREQ_LUT_LINEAR_QSEED,
+};
+
+/*
+ * 5.4 usage for each 6.1 usage, without and with QSEED scaling. Inline
+ * rotation fetches tiled (UBWC) buffers, which 5.4 treated as macrotile;
+ * the writeback usages 5.4 didn't have fall back to NRT. 5.4 picked
+ * danger/safe by the same usage, so the unscaled one serves both the
+ * portrait and the landscape danger/safe LUT.
+ */
+static const u32 legacy_qos_usage[SDE_QOS_LUT_USAGE_MAX][SDE_CREQ_LUT_TYPE_MAX] = {
+	[SDE_QOS_LUT_USAGE_LINEAR] = {LEGACY_QOS_LINEAR, LEGACY_QOS_LINEAR_QSEED},
+	[SDE_QOS_LUT_USAGE_MACROTILE] = {LEGACY_QOS_MACROTILE,
+			LEGACY_QOS_MACROTILE_QSEED},
+	[SDE_QOS_LUT_USAGE_NRT] = {LEGACY_QOS_NRT, LEGACY_QOS_NRT},
+	[SDE_QOS_LUT_USAGE_CWB] = {LEGACY_QOS_CWB, LEGACY_QOS_CWB},
+	[SDE_QOS_LUT_USAGE_CWB_TILE] = {LEGACY_QOS_CWB, LEGACY_QOS_CWB},
+	[SDE_QOS_LUT_USAGE_INLINE] = {LEGACY_QOS_MACROTILE,
+			LEGACY_QOS_MACROTILE_QSEED},
+	[SDE_QOS_LUT_USAGE_INLINE_RESTRICTED_FMTS] = {LEGACY_QOS_MACROTILE,
+			LEGACY_QOS_MACROTILE_QSEED},
+	[SDE_QOS_LUT_USAGE_OFFLINE_WB] = {LEGACY_QOS_NRT, LEGACY_QOS_NRT},
+	[SDE_QOS_LUT_USAGE_WB_ROT] = {LEGACY_QOS_NRT, LEGACY_QOS_NRT},
+};
+
+static void _sde_qos_parse_legacy_dt_cfg(struct sde_mdss_cfg *cfg,
+	u32 qos_count, int *prop_count, struct sde_prop_value *prop_value,
+	bool *prop_exists)
+{
+	u32 fps, usage, type, src, idx, key;
+	bool ds_valid;
+	u64 lut_hi, lut_lo;
+
+	ds_valid = prop_exists[QOS_DANGER_LUT] && prop_exists[QOS_SAFE_LUT] &&
+		prop_count[QOS_DANGER_LUT] >= LEGACY_QOS_MAX * qos_count &&
+		prop_count[QOS_SAFE_LUT] >= LEGACY_QOS_MAX * qos_count;
+	if (!ds_valid)
+		SDE_ERROR("invalid 5.4 danger/safe LUTs, counts %d/%d\n",
+			prop_count[QOS_DANGER_LUT], prop_count[QOS_SAFE_LUT]);
+
+	for (fps = 0; fps < qos_count; fps++) {
+		for (usage = 0; usage < SDE_QOS_LUT_USAGE_MAX; usage++) {
+			src = fps * LEGACY_QOS_MAX + legacy_qos_usage[usage][0];
+			for (type = 0; ds_valid &&
+					type < SDE_DANGER_SAFE_LUT_TYPE_MAX; type++) {
+				idx = (fps * SDE_QOS_LUT_USAGE_MAX + usage) *
+					SDE_DANGER_SAFE_LUT_TYPE_MAX + type;
+				cfg->perf.danger_lut[idx] = PROP_VALUE_ACCESS(
+					prop_value, QOS_DANGER_LUT, src);
+				cfg->perf.safe_lut[idx] = PROP_VALUE_ACCESS(
+					prop_value, QOS_SAFE_LUT, src);
+			}
+
+			for (type = 0; type < SDE_CREQ_LUT_TYPE_MAX; type++) {
+				key = legacy_qos_creq_prop[
+					legacy_qos_usage[usage][type]];
+				if (!prop_exists[key] ||
+						prop_count[key] < 2 * qos_count)
+					continue;
+				idx = (fps * SDE_QOS_LUT_USAGE_MAX + usage) *
+					SDE_CREQ_LUT_TYPE_MAX + type;
+				lut_hi = PROP_VALUE_ACCESS(prop_value, key,
+						fps * 2);
+				lut_lo = PROP_VALUE_ACCESS(prop_value, key,
+						fps * 2 + 1);
+				cfg->perf.creq_lut[idx] = (lut_hi << 32) | lut_lo;
+			}
+		}
+	}
+}
+
 static int _sde_qos_parse_dt_cfg(struct sde_mdss_cfg *cfg, int *prop_count,
 	struct sde_prop_value *prop_value, bool *prop_exists)
 {
@@ -4486,6 +4608,12 @@ static int _sde_qos_parse_dt_cfg(struct sde_mdss_cfg *cfg, int *prop_count,
 		sizeof(u64) * SDE_QOS_LUT_USAGE_MAX * SDE_CREQ_LUT_TYPE_MAX, GFP_KERNEL);
 	if (!cfg->perf.creq_lut || !cfg->perf.safe_lut || !cfg->perf.danger_lut)
 		goto end;
+
+	if (!prop_exists[QOS_CREQ_LUT] && prop_exists[QOS_CREQ_LUT_LINEAR]) {
+		_sde_qos_parse_legacy_dt_cfg(cfg, qos_count, prop_count,
+				prop_value, prop_exists);
+		return 0;
+	}
 
 	if (prop_exists[QOS_DANGER_LUT] &&
 			(prop_count[QOS_DANGER_LUT] >=
@@ -4597,6 +4725,8 @@ static void _sde_perf_parse_dt_cfg_populate(struct sde_mdss_cfg *cfg,
 			DEFAULT_AMORTIZABLE_THRESHOLD;
 	cfg->perf.num_ddr_channels = prop_exists[PERF_NUM_DDR_CHANNELS] ?
 			PROP_VALUE_ACCESS(prop_value, PERF_NUM_DDR_CHANNELS, 0) :
+			prop_exists[PERF_DRAM_CHANNELS] ?
+			PROP_VALUE_ACCESS(prop_value, PERF_DRAM_CHANNELS, 0) :
 			DEFAULT_NUM_DDR_CHANNELS;
 	cfg->perf.dram_efficiency = prop_exists[PERF_DRAM_EFFICIENCY] ?
 			PROP_VALUE_ACCESS(prop_value, PERF_DRAM_EFFICIENCY, 0) :
