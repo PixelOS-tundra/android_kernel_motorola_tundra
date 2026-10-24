@@ -3725,8 +3725,11 @@ static int sde_cache_parse_dt(struct device_node *np,
 
 		slice = llcc_slice_getd(usecase_id);
 		if (IS_ERR_OR_NULL(slice)) {
-			SDE_ERROR("failed to get system cache %ld\n", PTR_ERR(slice));
-			return -EINVAL;
+			/* as on 5.4, run without that system cache */
+			SDE_ERROR("failed to get system cache %d: %ld, disabling it\n",
+					i, PTR_ERR(slice));
+			clear_bit(i, sde_cfg->sde_sys_cache_type_map);
+			continue;
 		}
 
 		sc_cfg->llcc_uid = usecase_id;
