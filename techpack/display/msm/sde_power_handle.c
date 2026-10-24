@@ -752,10 +752,12 @@ clkget_err:
 vreg_err:
 	if (mp->vreg_config)
 		devm_kfree(&pdev->dev, mp->vreg_config);
+	mp->vreg_config = NULL;
 	mp->num_vreg = 0;
 parse_vreg_err:
 	if (mp->clk_config)
 		devm_kfree(&pdev->dev, mp->clk_config);
+	mp->clk_config = NULL;
 	mp->num_clk = 0;
 end:
 	return rc;
