@@ -893,6 +893,72 @@ static struct dsi_pll_clk dsi1_phy_pll_out_dsiclk = {
 	},
 };
 
+/*
+ * The lahaina 5.4 DT consumes the PLLs by the IDs of the 5.4 mux tree
+ * (dt-bindings/clock/mdss-5nm-pll-clk.h, 26 per PLL), e.g. the dsi-display
+ * node takes <&mdss_dsi_phy0 BYTECLK_MUX_0_CLK>. 6.1 only registers the
+ * two PLL outputs, which carry the names of the 5.4 muxes, so every byte
+ * clock of that tree maps to the byte output and every pixel clock to the
+ * dsi output. IDs that name a clock this PLL registers keep their 6.1
+ * meaning.
+ */
+enum {
+	LEGACY_BYTECLK_SRC = 3,
+	LEGACY_BYTECLK_MUX = 6,
+	LEGACY_PCLK_SRC_MUX = 7,
+	LEGACY_PCLK_SRC = 8,
+	LEGACY_PCLK_MUX = 9,
+	LEGACY_SHADOW_BYTECLK_SRC = 13,
+	LEGACY_SHADOW_PCLK_SRC_MUX = 16,
+	LEGACY_SHADOW_PCLK_SRC = 17,
+	LEGACY_CPHY_BYTECLK_SRC = 18,
+	LEGACY_CPHY_PCLK_SRC_MUX = 20,
+	LEGACY_CPHY_PCLK_SRC = 21,
+	LEGACY_SHADOW_CPHY_BYTECLK_SRC = 22,
+	LEGACY_SHADOW_CPHY_PCLK_SRC_MUX = 24,
+	LEGACY_SHADOW_CPHY_PCLK_SRC = 25,
+	LEGACY_IDS_PER_PLL = 26,
+};
+
+static struct clk *dsi_pll_5nm_clk_xlate(struct of_phandle_args *clkspec,
+		void *data)
+{
+	struct clk_onecell_data *clk_data = data;
+	unsigned int idx = clkspec->args[0];
+	struct clk *clk = NULL;
+
+	if (idx < clk_data->clk_num && clk_data->clks[idx])
+		return clk_data->clks[idx];
+
+	if (idx >= DSI_PLL_MAX * LEGACY_IDS_PER_PLL)
+		return ERR_PTR(-EINVAL);
+
+	switch (idx % LEGACY_IDS_PER_PLL) {
+	case LEGACY_BYTECLK_SRC:
+	case LEGACY_BYTECLK_MUX:
+	case LEGACY_SHADOW_BYTECLK_SRC:
+	case LEGACY_CPHY_BYTECLK_SRC:
+	case LEGACY_SHADOW_CPHY_BYTECLK_SRC:
+		clk = clk_data->clks[(idx / LEGACY_IDS_PER_PLL) * 2];
+		break;
+	case LEGACY_PCLK_SRC_MUX:
+	case LEGACY_PCLK_SRC:
+	case LEGACY_PCLK_MUX:
+	case LEGACY_SHADOW_PCLK_SRC_MUX:
+	case LEGACY_SHADOW_PCLK_SRC:
+	case LEGACY_CPHY_PCLK_SRC_MUX:
+	case LEGACY_CPHY_PCLK_SRC:
+	case LEGACY_SHADOW_CPHY_PCLK_SRC_MUX:
+	case LEGACY_SHADOW_CPHY_PCLK_SRC:
+		clk = clk_data->clks[(idx / LEGACY_IDS_PER_PLL) * 2 + 1];
+		break;
+	default:
+		return ERR_PTR(-EINVAL);
+	}
+
+	return clk ? clk : ERR_PTR(-ENOENT);
+}
+
 int dsi_pll_clock_register_5nm(struct platform_device *pdev,
 				  struct dsi_pll_resource *pll_res)
 {
@@ -962,7 +1028,7 @@ int dsi_pll_clock_register_5nm(struct platform_device *pdev,
 
 
 		rc = of_clk_add_provider(pdev->dev.of_node,
-				of_clk_src_onecell_get, clk_data);
+				dsi_pll_5nm_clk_xlate, clk_data);
 	} else {
 		dsi1_phy_pll_out_byteclk.priv = pll_res;
 		dsi1_phy_pll_out_dsiclk.priv = pll_res;
@@ -989,7 +1055,7 @@ int dsi_pll_clock_register_5nm(struct platform_device *pdev,
 		clk_data->clks[3] = clk;
 
 		rc = of_clk_add_provider(pdev->dev.of_node,
-				of_clk_src_onecell_get, clk_data);
+				dsi_pll_5nm_clk_xlate, clk_data);
 	}
 	if (!rc) {
 		DSI_PLL_INFO(pll_res, "Registered clocks successfully\n");
