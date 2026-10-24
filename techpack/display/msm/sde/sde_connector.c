@@ -9,6 +9,7 @@
 #include "sde_dbg.h"
 
 #include "sde_kms.h"
+#include "bl_lut.h"
 #include "sde_connector.h"
 #include "sde_encoder.h"
 #include "msm_cooling_device.h"
@@ -160,6 +161,12 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 
 	if (!bl_lvl && brightness)
 		bl_lvl = 1;
+
+	if (display->panel->bl_config.bl_remap &&
+			bl_lvl < ARRAY_SIZE(bl_lut)) {
+		SDE_DEBUG("remap bl_lvl from %d to %d\n", bl_lvl, bl_lut[bl_lvl]);
+		bl_lvl = bl_lut[bl_lvl];
+	}
 
 	if (!c_conn->allow_bl_update) {
 		c_conn->unset_bl_level = bl_lvl;
