@@ -241,4 +241,7 @@ source "drivers/peci/Kconfig"
 
 source "drivers/hte/Kconfig"
 
+source "drivers/mmi_annotate/Kconfig"
+source "drivers/mmi_info/Kconfig"
+
 endmenu
