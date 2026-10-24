@@ -4,7 +4,8 @@
  * init/main.c. In both, userspace may only mount block filesystems
  * read-only, may not open storage (UFS or dm) block devices for writing and
  * may not reboot; doing so trips the guard, which panics. With "init", PID 1
- * executing /system/bin/init (the end of first stage) panics as well.
+ * executing /system/bin/init (the end of first stage) panics as well. In
+ * both, the block layer refuses kernel writes to the UFS LUNs.
  */
 #ifndef _LINUX_K61_STOP_H
 #define _LINUX_K61_STOP_H
@@ -15,5 +16,6 @@ extern bool k61_stop_init;
 extern bool k61_stop_exec;
 
 __printf(1, 2) __noreturn void k61_stop_guard_trip(const char *fmt, ...);
+__printf(1, 2) void k61_stop_guard_trip_async(const char *fmt, ...);
 
 #endif

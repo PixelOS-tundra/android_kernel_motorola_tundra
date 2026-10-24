@@ -1739,6 +1739,33 @@ void k61_stop_guard_trip(const char *fmt, ...)
 	panic("k61.stop: guard tripped");
 }
 
+static char k61_stop_async_reason[128];
+static atomic_t k61_stop_async_tripped = ATOMIC_INIT(0);
+
+static void k61_stop_async_trip_fn(struct work_struct *work)
+{
+	k61_stop_guard_trip("%s", k61_stop_async_reason);
+}
+static DECLARE_WORK(k61_stop_async_trip_work, k61_stop_async_trip_fn);
+
+/*
+ * The same for callers that must not sleep or block, e.g. the block layer:
+ * the caller refuses the operation itself and the trip (hold, then panic)
+ * runs from a workqueue. Only the first call counts.
+ */
+void k61_stop_guard_trip_async(const char *fmt, ...)
+{
+	va_list args;
+
+	if (atomic_xchg(&k61_stop_async_tripped, 1))
+		return;
+	va_start(args, fmt);
+	vsnprintf(k61_stop_async_reason, sizeof(k61_stop_async_reason), fmt,
+		  args);
+	va_end(args);
+	queue_work(system_long_wq, &k61_stop_async_trip_work);
+}
+
 static int __ref kernel_init(void *unused)
 {
 	int ret;
