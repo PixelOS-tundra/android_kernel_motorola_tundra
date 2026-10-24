@@ -2114,6 +2114,29 @@ static const struct adsp_data lahaina_adsp_resource = {
 	.ssctl_id = 0x14,
 };
 
+static const struct adsp_data lahaina_cdsp_resource = {
+	.crash_reason_smem = 601,
+	.firmware_name = "cdsp.mdt",
+	.pas_id = 18,
+	.minidump_id = 7,
+	.auto_boot = false,
+	.ssr_name = "cdsp",
+	.sysmon_name = "cdsp",
+	.qmp_name = "cdsp",
+	.ssctl_id = 0x17,
+};
+
+static const struct adsp_data lahaina_slpi_resource = {
+	.crash_reason_smem = 424,
+	.firmware_name = "slpi.mdt",
+	.pas_id = 12,
+	.auto_boot = false,
+	.ssr_name = "slpi",
+	.sysmon_name = "slpi",
+	.qmp_name = "slpi",
+	.ssctl_id = 0x16,
+};
+
 /*
  * MPSS on the 5.4 binding: the SSR name is the 5.4 subsystem name "modem",
  * which the qcom,glink "modem" edge (label) and the IPA/rmnet SSR notifiers
@@ -2147,6 +2170,8 @@ static const struct {
 } pil_tz_generic_resources[] = {
 	{ "adsp", &lahaina_adsp_resource },
 	{ "modem", &lahaina_mpss_resource },
+	{ "cdsp", &lahaina_cdsp_resource },
+	{ "slpi", &lahaina_slpi_resource },
 };
 
 static int adsp_pil_tz_generic_probe(struct platform_device *pdev)
