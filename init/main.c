@@ -1931,6 +1931,10 @@ void k61_stop_guard_trip(const char *fmt, ...)
 	}
 
 	if (bringup_hold) {
+		/* the init/init2 timeout must not cut the hold short */
+		if (timer_pending(&k61_stop_timer))
+			mod_timer(&k61_stop_timer,
+				  jiffies + (bringup_hold + 10) * HZ);
 		pr_emerg("k61.stop: holding for %us\n", bringup_hold);
 		ssleep(bringup_hold);
 	}
