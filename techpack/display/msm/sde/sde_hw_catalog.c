@@ -4194,6 +4194,13 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 	cfg->ubwc_rev = props->exists[UBWC_VERSION] ?
 			PROP_VALUE_ACCESS(props->values,
 			UBWC_VERSION, 0) : DEFAULT_SDE_UBWC_NONE;
+	/*
+	 * The lahaina 5.4 DT has the short form (<0x400> for UBWC 4.0),
+	 * which 5.4 encoded with SDE_HW_UBWC_VER(); 6.1 DTs carry it
+	 * encoded already (<0x40000000>).
+	 */
+	if (cfg->ubwc_rev && cfg->ubwc_rev <= 0xfff)
+		cfg->ubwc_rev = SDE_HW_UBWC_VER(cfg->ubwc_rev);
 
 	cfg->mdp[0].highest_bank_bit = DEFAULT_SDE_HIGHEST_BANK_BIT;
 
