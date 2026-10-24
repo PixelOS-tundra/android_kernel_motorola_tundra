@@ -1717,6 +1717,44 @@ static int __init k61_stop_data_setup(char *str)
 }
 __setup("k61.data=", k61_stop_data_setup);
 
+static unsigned int k61_stop_data_hold_s = 30;
+
+static int __init k61_stop_data_hold_setup(char *str)
+{
+	return !kstrtouint(str, 0, &k61_stop_data_hold_s);
+}
+__setup("k61.data_hold=", k61_stop_data_hold_setup);
+
+static void k61_stop_data_hold(struct timer_list *t)
+{
+	panic("k61.stop: %us after the /data mount", k61_stop_data_hold_s);
+}
+static DEFINE_TIMER(k61_stop_data_timer, k61_stop_data_hold);
+
+/*
+ * Called by do_new_mount() for every block filesystem mount under the
+ * guards: logs the result and starts the k61.data_hold timer once /data is
+ * mounted, so the run ends shortly after vold has installed its keys.
+ */
+void k61_stop_block_mounted(const struct path *path, const char *source,
+			    const char *fstype, int err)
+{
+	char buf[64];
+	char *mnt = d_path(path, buf, sizeof(buf));
+
+	if (IS_ERR(mnt))
+		mnt = "?";
+	pr_info("k61.stop: mount of %s on %s (%s) -> %d\n",
+		source ?: "(null)", mnt, fstype, err);
+	if (!err && !strcmp(mnt, "/data") &&
+	    !timer_pending(&k61_stop_data_timer)) {
+		pr_info("k61.stop: /data mounted, stopping in %us\n",
+			k61_stop_data_hold_s);
+		mod_timer(&k61_stop_data_timer,
+			  jiffies + k61_stop_data_hold_s * HZ);
+	}
+}
+
 /*
  * "k61.hold=<s>" keeps the kernel running for that many seconds at the
  * k61.stop point before panicking, e.g. to read the log over the USB

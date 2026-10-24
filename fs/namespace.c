@@ -3111,6 +3111,10 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 	if (!err)
 		err = do_new_mount_fc(fc, path, mnt_flags);
 
+	/* DEBUG (k61.stop=init): log block mounts, time the /data mount */
+	if (k61_stop_init && (fc->fs_type->fs_flags & FS_REQUIRES_DEV))
+		k61_stop_block_mounted(path, name, fc->fs_type->name, err);
+
 	put_fs_context(fc);
 	return err;
 }
