@@ -13,6 +13,7 @@
 #define DEBUG		/* Enable initcall_debug */
 
 #include <linux/types.h>
+#include <crypto/sha2.h>
 #include <linux/extable.h>
 #include <linux/module.h>
 #include <linux/proc_fs.h>
@@ -1724,6 +1725,78 @@ static int __init k61_stop_data_hold_setup(char *str)
 	return !kstrtouint(str, 0, &k61_stop_data_hold_s);
 }
 __setup("k61.data_hold=", k61_stop_data_hold_setup);
+
+static char k61_stop_probe_paths[256] =
+	"/data/misc/vold/user_keys/de/0/encrypted_key,"
+	"/data/misc/vold/user_keys/de/0/keymaster_key_blob,"
+	"/data/misc/vold/user_keys/de/0/secdiscardable";
+
+static int __init k61_stop_probe_setup(char *str)
+{
+	strscpy(k61_stop_probe_paths, str, sizeof(k61_stop_probe_paths));
+	return 1;
+}
+__setup("k61.data_probe=", k61_stop_probe_setup);
+
+#define K61_STOP_PROBE_MAX	(8 << 20)
+
+static void k61_stop_probe_file(const char *path, void *buf)
+{
+	u8 digest[SHA256_DIGEST_SIZE];
+	struct sha256_state sctx;
+	struct file *file;
+	loff_t pos = 0;
+	ssize_t n = 0;
+
+	file = filp_open(path, O_RDONLY | O_LARGEFILE, 0);
+	if (IS_ERR(file)) {
+		pr_info("k61.stop: probe %s: open -> %ld\n", path,
+			PTR_ERR(file));
+		return;
+	}
+	sha256_init(&sctx);
+	while (pos < K61_STOP_PROBE_MAX) {
+		n = kernel_read(file, buf, PAGE_SIZE * 16, &pos);
+		if (n <= 0)
+			break;
+		sha256_update(&sctx, buf, n);
+	}
+	sha256_final(&sctx, digest);
+	fput(file);
+	if (n < 0)
+		pr_info("k61.stop: probe %s: read error %zd after %lld bytes\n",
+			path, n, pos);
+	else
+		pr_info("k61.stop: probe %s: %lld bytes, sha256 %*phN\n", path,
+			pos, SHA256_DIGEST_SIZE, digest);
+}
+
+/*
+ * Called from FS_IOC_ADD_ENCRYPTION_KEY after vold added the first
+ * hw-wrapped key, in vold's context (its root and SELinux domain): read
+ * the probe files by their plaintext names, which needs the right
+ * filenames key, and hash their contents, which needs the right contents
+ * key and DUNs on ICE. k61.data=ro only, so nothing can write meanwhile.
+ */
+void k61_stop_data_probe(void)
+{
+	static atomic_t done = ATOMIC_INIT(0);
+	char *paths, *p, *path;
+	void *buf;
+
+	if (!k61_stop_data_ro || atomic_xchg(&done, 1))
+		return;
+	paths = kstrdup(k61_stop_probe_paths, GFP_KERNEL);
+	buf = kmalloc(PAGE_SIZE * 16, GFP_KERNEL);
+	if (paths && buf) {
+		p = paths;
+		while ((path = strsep(&p, ",")))
+			if (*path)
+				k61_stop_probe_file(path, buf);
+	}
+	kfree(buf);
+	kfree(paths);
+}
 
 static void k61_stop_data_hold(struct timer_list *t)
 {

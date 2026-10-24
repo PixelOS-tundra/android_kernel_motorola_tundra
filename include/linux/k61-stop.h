@@ -11,7 +11,10 @@
  * read-write block mounts become read-only mounts, and userspace write opens
  * of storage other than ssd fail with -EROFS (so fsck, mkfs and wipes fail
  * cleanly) instead of tripping the guard. "k61.data_hold=<s>"
- * (default 30) panics that many seconds after /data is mounted.
+ * (default 30) panics that many seconds after /data is mounted. Once vold
+ * has added the first hw-wrapped fscrypt key, the files listed in
+ * "k61.data_probe=<path>,..." (default: the user 0 DE key files vold reads)
+ * are read and their sha256 logged, to compare with 5.4.
  */
 #ifndef _LINUX_K61_STOP_H
 #define _LINUX_K61_STOP_H
@@ -28,5 +31,6 @@ __printf(1, 2) __noreturn void k61_stop_guard_trip(const char *fmt, ...);
 __printf(1, 2) void k61_stop_guard_trip_async(const char *fmt, ...);
 void k61_stop_block_mounted(const struct path *path, const char *source,
 			    const char *fstype, int err);
+void k61_stop_data_probe(void);
 
 #endif

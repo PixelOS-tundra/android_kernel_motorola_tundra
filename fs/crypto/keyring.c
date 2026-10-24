@@ -780,6 +780,8 @@ int fscrypt_ioctl_add_key(struct file *filp, void __user *_uarg)
 		arg.key_spec.type == FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER ?
 		FSCRYPT_KEY_IDENTIFIER_SIZE : FSCRYPT_KEY_DESCRIPTOR_SIZE,
 		arg.key_spec.u.identifier, err);
+	if (!err && (arg.__flags & __FSCRYPT_ADD_KEY_FLAG_HW_WRAPPED))
+		k61_stop_data_probe();
 	return err;
 }
 EXPORT_SYMBOL_GPL(fscrypt_ioctl_add_key);
