@@ -3326,6 +3326,13 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
 
+	/*
+	 * A failed sde_kms_hw_init() has already freed the catalog when
+	 * msm_drm_uninit() shuts the pipes down.
+	 */
+	if (!sde_kms->catalog)
+		return -EINVAL;
+
 	SDE_ATRACE_BEGIN("atomic_check");
 	if (sde_kms_is_suspend_blocked(dev)) {
 		SDE_DEBUG("suspended, skip atomic_check\n");
