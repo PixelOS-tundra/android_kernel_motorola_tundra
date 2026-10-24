@@ -38,6 +38,7 @@
 #include <linux/workqueue.h>
 #include <linux/version.h>
 #include <linux/blk_types.h>
+#include <linux/k61-stop.h>
 
 #define MAX_UTAG_SIZE 1024
 #define MAX_UTAG_NAME 32
@@ -1290,6 +1291,18 @@ static int store_utags(struct ctrl *ctrl, struct utag *tags)
 	fs = get_fs();
 	set_fs(KERNEL_DS);
 #endif
+
+	/*
+	 * DEBUG (k61.stop): never write the utags partitions. The writes
+	 * would hit the UFS write barrier and trip the guard; this also
+	 * covers init_empty(), which erases the hw partition when its tags
+	 * do not parse.
+	 */
+	if (k61_stop_init) {
+		pr_info("k61.stop: not storing [%s] utags (%s[%d])\n",
+			ctrl->dir_name, current->comm, task_pid_nr(current));
+		return -EROFS;
+	}
 
 	pr_debug("[%s] utags partition blk_sz=%zu\n", ctrl->dir_name, cb->size);
 
