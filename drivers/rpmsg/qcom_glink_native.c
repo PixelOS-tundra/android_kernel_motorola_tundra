@@ -53,10 +53,6 @@ do {									     \
 	if (ch->glink) {						     \
 		ipc_log_string(ch->glink->ilc, "%s[%d:%d] %s: "x, ch->name,  \
 			       ch->lcid, ch->rcid, __func__, ##__VA_ARGS__); \
-		if (k61_glinklog)					     \
-			pr_info("glink: %s %s[%d:%d] %s: "x,		     \
-				ch->glink->name, ch->name, ch->lcid,	     \
-				ch->rcid, __func__, ##__VA_ARGS__);	     \
 	}								     \
 } while (0)
 
