@@ -8,6 +8,7 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #include <linux/kernel.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
@@ -570,6 +571,22 @@ int ping_subsystem_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev)
 }
 EXPORT_SYMBOL_GPL(ping_subsystem_init);
 
+/*
+ * The 5.4 PIL binding (qcom,pil-tz-generic, used by the stock lahaina DT)
+ * names the interrupts and the stop state differently.
+ */
+static int q6v5_get_irq(struct platform_device *pdev, const char *name,
+			const char *legacy_name)
+{
+	if (of_property_match_string(pdev->dev.of_node, "interrupt-names",
+				     name) < 0 &&
+	    of_property_match_string(pdev->dev.of_node, "interrupt-names",
+				     legacy_name) >= 0)
+		name = legacy_name;
+
+	return platform_get_irq_byname(pdev, name);
+}
+
 /**
  * qcom_q6v5_init() - initializer of the q6v5 common struct
  * @q6v5:	handle to be initialized
@@ -609,7 +626,7 @@ int qcom_q6v5_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev,
 		q6v5->rmb_base = NULL;
 
 
-	q6v5->wdog_irq = platform_get_irq_byname(pdev, "wdog");
+	q6v5->wdog_irq = q6v5_get_irq(pdev, "wdog", "qcom,wdog");
 	if (q6v5->wdog_irq < 0)
 		return q6v5->wdog_irq;
 
@@ -622,7 +639,7 @@ int qcom_q6v5_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev,
 		return ret;
 	}
 
-	q6v5->fatal_irq = platform_get_irq_byname(pdev, "fatal");
+	q6v5->fatal_irq = q6v5_get_irq(pdev, "fatal", "qcom,err-fatal");
 	if (q6v5->fatal_irq < 0)
 		return q6v5->fatal_irq;
 
@@ -635,7 +652,7 @@ int qcom_q6v5_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev,
 		return ret;
 	}
 
-	q6v5->ready_irq = platform_get_irq_byname(pdev, "ready");
+	q6v5->ready_irq = q6v5_get_irq(pdev, "ready", "qcom,err-ready");
 	if (q6v5->ready_irq < 0)
 		return q6v5->ready_irq;
 
@@ -648,7 +665,7 @@ int qcom_q6v5_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev,
 		return ret;
 	}
 
-	q6v5->handover_irq = platform_get_irq_byname(pdev, "handover");
+	q6v5->handover_irq = q6v5_get_irq(pdev, "handover", "qcom,proxy-unvote");
 	if (q6v5->handover_irq < 0)
 		return q6v5->handover_irq;
 
@@ -662,7 +679,7 @@ int qcom_q6v5_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev,
 	}
 	disable_irq(q6v5->handover_irq);
 
-	q6v5->stop_irq = platform_get_irq_byname(pdev, "stop-ack");
+	q6v5->stop_irq = q6v5_get_irq(pdev, "stop-ack", "qcom,stop-ack");
 	if (q6v5->stop_irq < 0)
 		return q6v5->stop_irq;
 
@@ -675,7 +692,13 @@ int qcom_q6v5_init(struct qcom_q6v5 *q6v5, struct platform_device *pdev,
 		return ret;
 	}
 
-	q6v5->state = qcom_smem_state_get(&pdev->dev, "stop", &q6v5->stop_bit);
+	if (of_property_match_string(pdev->dev.of_node, "qcom,smem-state-names",
+				     "stop") < 0)
+		q6v5->state = qcom_smem_state_get(&pdev->dev, "qcom,force-stop",
+						  &q6v5->stop_bit);
+	else
+		q6v5->state = qcom_smem_state_get(&pdev->dev, "stop",
+						  &q6v5->stop_bit);
 	if (IS_ERR(q6v5->state)) {
 		dev_err(&pdev->dev, "failed to acquire stop state\n");
 		return PTR_ERR(q6v5->state);
