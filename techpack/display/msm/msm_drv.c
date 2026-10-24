@@ -1035,6 +1035,8 @@ static int msm_drm_component_init(struct device *dev)
 	return 0;
 
 fail:
+	/* DEBUG (tundra 6.1 bring-up): stop before the unwind floods pstore */
+	panic("k61: msm_drm component init failed: %d", ret);
 	msm_drm_uninit(dev);
 	return ret;
 bind_fail:
