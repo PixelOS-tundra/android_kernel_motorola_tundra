@@ -2318,6 +2318,9 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 
 	return 0;
 fail:
+	/* DEBUG (tundra 6.1 bring-up): stop before the cleanup floods pstore */
+	panic("k61: sde drm obj init failed: %d (planes %d crtcs %d)",
+			ret, priv->num_planes, priv->num_crtcs);
 	_sde_kms_drm_obj_destroy(sde_kms);
 fail_irq:
 	sde_core_irq_domain_fini(sde_kms);

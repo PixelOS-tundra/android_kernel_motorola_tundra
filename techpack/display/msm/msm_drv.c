@@ -822,6 +822,12 @@ static struct msm_kms *_msm_drm_component_init_helper(
 	ret = (kms)->funcs->hw_init(kms);
 	if (ret) {
 		DISP_DEV_ERR(dev, "kms hw init failed: %d\n", ret);
+		/*
+		 * DEBUG (tundra 6.1 bring-up): the unwind spams WARNs, faults
+		 * the still-scanning splash and resets the SoC, which pushes
+		 * the cause out of pstore. Stop here instead.
+		 */
+		panic("k61: kms hw init failed: %d", ret);
 		return ERR_PTR(ret);
 	}
 
