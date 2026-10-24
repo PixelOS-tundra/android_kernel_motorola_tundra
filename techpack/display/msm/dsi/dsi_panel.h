@@ -321,6 +321,7 @@ struct dsi_panel {
 	struct dsi_panel_ops panel_ops;
 
 	bool hbm_state;
+	bool dc_state;
 	bool fod_hbm_enabled;
 	bool fod_ui;
 	struct brightness_alpha_pair *fod_dim_lut;

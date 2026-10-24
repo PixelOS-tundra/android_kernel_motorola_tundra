@@ -4441,7 +4441,83 @@ static ssize_t sysfs_fod_hbm_write(struct device *dev,
 	return rc ?: count;
 }
 
+static ssize_t sysfs_hbm_read(struct device *dev,
+			      struct device_attribute *attr, char *buf)
+{
+	struct dsi_display *display = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", display->panel->hbm_state);
+}
+
+static ssize_t sysfs_hbm_write(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t count)
+{
+	struct dsi_display *display = dev_get_drvdata(dev);
+	struct dsi_panel *panel = display->panel;
+	bool status;
+	int rc;
+
+	rc = kstrtobool(buf, &status);
+	if (rc)
+		return rc;
+
+	mutex_lock(&panel->panel_lock);
+	/* only change HBM when needed */
+	if (panel->hbm_state != status) {
+		rc = dsi_panel_set_hbm_status(panel, panel->fod_hbm_enabled,
+					      status);
+		if (!rc)
+			panel->hbm_state = status;
+	}
+	mutex_unlock(&panel->panel_lock);
+
+	return rc ?: count;
+}
+
+/* called with panel_lock held */
+static int dsi_panel_apply_dc_state(struct dsi_panel *panel)
+{
+	if (!panel->panel_initialized)
+		return 0;
+
+	return dsi_panel_tx_cmd_set(panel, panel->dc_state ?
+				    DSI_CMD_SET_DC_ON : DSI_CMD_SET_DC_OFF);
+}
+
+static ssize_t sysfs_dc_read(struct device *dev,
+			     struct device_attribute *attr, char *buf)
+{
+	struct dsi_display *display = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", display->panel->dc_state);
+}
+
+static ssize_t sysfs_dc_write(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct dsi_display *display = dev_get_drvdata(dev);
+	struct dsi_panel *panel = display->panel;
+	bool status;
+	int rc;
+
+	rc = kstrtobool(buf, &status);
+	if (rc)
+		return rc;
+
+	mutex_lock(&panel->panel_lock);
+	/* the state is kept and re-applied when the panel turns on */
+	panel->dc_state = status;
+	rc = dsi_panel_apply_dc_state(panel);
+	mutex_unlock(&panel->panel_lock);
+
+	return rc ?: count;
+}
+
 static DEVICE_ATTR(fod_ui, 0444, sysfs_fod_ui_read, NULL);
+static DEVICE_ATTR(hbm, 0644, sysfs_hbm_read, sysfs_hbm_write);
+static DEVICE_ATTR(dc, 0644, sysfs_dc_read, sysfs_dc_write);
 static DEVICE_ATTR(hbm_on_delay, 0644,
 		   sysfs_hbm_on_delay_read, sysfs_hbm_on_delay_write);
 static DEVICE_ATTR(hbm_off_delay, 0644,
@@ -4459,6 +4535,43 @@ static struct attribute *panel_attrs[] = {
 static struct attribute_group panel_attrs_group = {
 	.attrs = panel_attrs,
 };
+
+static struct attribute *panel_hbm_attrs[] = {
+	&dev_attr_hbm.attr,
+	NULL,
+};
+
+static struct attribute_group panel_hbm_attrs_group = {
+	.attrs = panel_hbm_attrs,
+};
+
+static struct attribute *panel_dc_attrs[] = {
+	&dev_attr_dc.attr,
+	NULL,
+};
+
+static struct attribute_group panel_dc_attrs_group = {
+	.attrs = panel_dc_attrs,
+};
+
+static bool dsi_panel_has_cmds(struct dsi_panel *panel, const char *on,
+			       const char *off)
+{
+	return of_find_property(panel->panel_of_node, on, NULL) &&
+		of_find_property(panel->panel_of_node, off, NULL);
+}
+
+static bool dsi_panel_has_hbm_cmds(struct dsi_panel *panel)
+{
+	return dsi_panel_has_cmds(panel, "qcom,mdss-dsi-hbm-on-command",
+				  "qcom,mdss-dsi-hbm-off-command");
+}
+
+static bool dsi_panel_has_dc_cmds(struct dsi_panel *panel)
+{
+	return dsi_panel_has_cmds(panel, "qcom,mdss-dsi-dc-on-command",
+				  "qcom,mdss-dsi-dc-off-command");
+}
 
 struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *of_node,
@@ -4612,6 +4725,12 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (panel->lhbm_config.enable &&
 			sysfs_create_group(&panel->parent->kobj, &panel_attrs_group))
 		DSI_ERR("failed to create panel sysfs attributes\n");
+	if (dsi_panel_has_hbm_cmds(panel) &&
+			sysfs_create_group(&panel->parent->kobj, &panel_hbm_attrs_group))
+		DSI_ERR("failed to create panel hbm attribute\n");
+	if (dsi_panel_has_dc_cmds(panel) &&
+			sysfs_create_group(&panel->parent->kobj, &panel_dc_attrs_group))
+		DSI_ERR("failed to create panel dc attribute\n");
 
 	return panel;
 error:
@@ -4621,6 +4740,10 @@ error:
 
 void dsi_panel_put(struct dsi_panel *panel)
 {
+	if (dsi_panel_has_hbm_cmds(panel))
+		sysfs_remove_group(&panel->parent->kobj, &panel_hbm_attrs_group);
+	if (dsi_panel_has_dc_cmds(panel))
+		sysfs_remove_group(&panel->parent->kobj, &panel_dc_attrs_group);
 	if (panel->lhbm_config.enable)
 		sysfs_remove_group(&panel->parent->kobj, &panel_attrs_group);
 	kfree(panel->lhbm_config.alpha);
@@ -5733,6 +5856,9 @@ int dsi_panel_enable(struct dsi_panel *panel)
 	if (panel->fod_hbm_enabled || panel->hbm_state)
 		rc = dsi_panel_set_hbm_status(panel, panel->fod_hbm_enabled,
 					      panel->hbm_state);
+
+	if (!rc && panel->dc_state)
+		rc = dsi_panel_apply_dc_state(panel);
 
 error:
 	mutex_unlock(&panel->panel_lock);
