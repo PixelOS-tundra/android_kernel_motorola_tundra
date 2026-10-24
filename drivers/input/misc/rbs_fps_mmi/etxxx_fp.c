@@ -67,6 +67,12 @@
 #define FP_NOTIFY_EVENT_BLANK                         PANEL_EVENT_DISPLAY_OFF    //MSM_DRM_EVENT_BLANK
 #define ets_fb_register_client(client)                panel_register_notifier(client);
 #define ets_fb_unregister_client(client)            panel_unregister_notifier(client);
+#elif IS_ENABLED(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
+#include <linux/soc/qcom/panel_event_notifier.h>
+#define EGISFP_PANEL_EVENT_NOTIFIER
+#include <drm/drm_panel.h>
+#define EGISFP_PANEL_RETRY_MS			500
+#define EGISFP_PANEL_RETRIES			120
 #elif defined(CONFIG_DRM_PANEL_NOTIFICATIONS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
 #include <drm/drm_panel.h>
 #else
@@ -988,7 +994,113 @@ int egisfp_check_ioctl_permission(struct egisfp_dev_t *egis_dev, unsigned int cm
 		return -EACCES;
 	}
 }
-#if defined(CONFIG_DRM_PANEL_NOTIFICATIONS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+#ifdef EGISFP_PANEL_EVENT_NOTIFIER
+static struct drm_panel *egisfp_find_panel(struct egisfp_dev_t *egis_dev)
+{
+	int i = 0;
+	int count = 0;
+	struct device_node *np = egis_dev->dd->dev.of_node;
+	struct device_node *node = NULL;
+	struct device_node *child = NULL;
+	struct drm_panel *panel = ERR_PTR(-ENODEV);
+
+	count = of_count_phandle_with_args(np, "panel", NULL);
+	for (i = 0; i < count; i++) {
+		node = of_parse_phandle(np, "panel", i);
+		panel = of_drm_find_panel(node);
+		of_node_put(node);
+		if (!IS_ERR(panel))
+			return panel;
+	}
+	if (count > 0)
+		return panel;
+
+	/*
+	 * No "panel" list on the fingerprint node (the tundra DT has none):
+	 * use the panel registered among the DSI panel nodes of the primary
+	 * display's MDP node. Only the active panel is registered.
+	 */
+	node = of_find_node_by_name(NULL, "qcom,dsi-display-primary");
+	if (!node)
+		return ERR_PTR(-ENODEV);
+	np = of_parse_phandle(node, "qcom,mdp", 0);
+	of_node_put(node);
+	if (!np)
+		return ERR_PTR(-ENODEV);
+	for_each_child_of_node(np, child) {
+		panel = of_drm_find_panel(child);
+		if (!IS_ERR(panel)) {
+			of_node_put(child);
+			break;
+		}
+	}
+	of_node_put(np);
+	return panel;
+}
+
+static void egisfp_panel_event_cb(enum panel_event_notifier_tag tag,
+		struct panel_event_notification *notification, void *pvt_data)
+{
+	struct egisfp_dev_t *egis_dev = pvt_data;
+	char *envp[2] = { NULL, NULL };
+	int ret = 0;
+
+	if (!notification || !egis_dev)
+		return;
+
+	/* as on DRM_PANEL_EARLY_EVENT_BLANK: before the commit only */
+	if (!notification->notif_data.early_trigger)
+		return;
+
+	switch (notification->notif_type) {
+	case DRM_PANEL_EVENT_UNBLANK:
+		egis_dev->screen_onoff = 1;
+		envp[0] = "PANEL=1";
+		break;
+	case DRM_PANEL_EVENT_BLANK:
+		egis_dev->screen_onoff = 0;
+		envp[0] = "PANEL=0";
+		break;
+	default:
+		return;
+	}
+	ret = kobject_uevent_env(&egis_dev->dd->dev.kobj, KOBJ_CHANGE, envp);
+	INFO_PRINT(" %s : screen_onoff = %d ret = %d \n", __func__, egis_dev->screen_onoff, ret);
+}
+
+static void egisfp_panel_work(struct work_struct *work)
+{
+	struct egisfp_dev_t *egis_dev = container_of(to_delayed_work(work),
+			struct egisfp_dev_t, panel_work);
+	struct drm_panel *panel;
+	void *cookie;
+
+	/* the display binds after this driver probes */
+	panel = egisfp_find_panel(egis_dev);
+	if (PTR_ERR_OR_ZERO(panel) == -EPROBE_DEFER &&
+	    ++egis_dev->panel_retries < EGISFP_PANEL_RETRIES) {
+		schedule_delayed_work(&egis_dev->panel_work,
+				msecs_to_jiffies(EGISFP_PANEL_RETRY_MS));
+		return;
+	}
+	if (IS_ERR(panel)) {
+		ERROR_PRINT(" %s : can not find drm_panel %ld ", __func__, PTR_ERR(panel));
+		return;
+	}
+
+	cookie = panel_event_notifier_register(PANEL_EVENT_NOTIFICATION_PRIMARY,
+			PANEL_EVENT_NOTIFIER_CLIENT_FINGERPRINT, panel,
+			egisfp_panel_event_cb, egis_dev);
+	if (IS_ERR(cookie)) {
+		ERROR_PRINT("  %s : panel_event_notifier_register fail: %ld ", __func__, PTR_ERR(cookie));
+		return;
+	}
+	egis_dev->active_panel = panel;
+	egis_dev->panel_cookie = cookie;
+	egis_dev->call_back_registered = 1;
+	INFO_PRINT(" %s : registered panel event notifier \n", __func__);
+}
+#elif defined(CONFIG_DRM_PANEL_NOTIFICATIONS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
 static int drm_check_dt(struct egisfp_dev_t *egis_dev)
 {
 	int i = 0;
@@ -1015,6 +1127,7 @@ static int drm_check_dt(struct egisfp_dev_t *egis_dev)
 	return -ENODEV;
 }
 #endif
+#ifndef EGISFP_PANEL_EVENT_NOTIFIER
 // Register FB notifier +++
 static int egisfp_fb_callback(struct notifier_block *nb, unsigned long val, void *data)
 {
@@ -1111,6 +1224,7 @@ static struct notifier_block egisfp_noti_block = {
 	.notifier_call = egisfp_fb_callback,
 };
 // Register FB notifier ---
+#endif
 
 int egisfp_parse_dt(struct egisfp_dev_t *egis_dev)
 {
@@ -1207,9 +1321,16 @@ int egisfp_remove(struct platform_device *pdev)
 	{
 		free_irq(egis_dev->gpio_irq, egis_dev);
 	}
+#ifdef EGISFP_PANEL_EVENT_NOTIFIER
+	cancel_delayed_work_sync(&egis_dev->panel_work);
+#endif
 	if (egis_dev->call_back_registered)
 	{
-#if defined(CONFIG_DRM_PANEL_NOTIFICATIONS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+#ifdef EGISFP_PANEL_EVENT_NOTIFIER
+		panel_event_notifier_unregister(egis_dev->panel_cookie);
+		egis_dev->panel_cookie = NULL;
+		egis_dev->active_panel = NULL;
+#elif defined(CONFIG_DRM_PANEL_NOTIFICATIONS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
 		if (egis_dev->active_panel)
 		{
 			drm_panel_notifier_unregister(egis_dev->active_panel, &egis_dev->notifier);
@@ -1292,7 +1413,12 @@ int egisfp_probe(struct platform_device *pdev)
 	egis_dev->power_enable = 0;
 	egis_dev->screen_onoff = 0;
 	egis_dev->call_back_registered = 0;
-#if defined(CONFIG_DRM_PANEL_NOTIFICATIONS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+#ifdef EGISFP_PANEL_EVENT_NOTIFIER
+	egis_dev->active_panel = NULL;
+	egis_dev->panel_cookie = NULL;
+	egis_dev->panel_retries = 0;
+	INIT_DELAYED_WORK(&egis_dev->panel_work, egisfp_panel_work);
+#elif defined(CONFIG_DRM_PANEL_NOTIFICATIONS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
 	egis_dev->active_panel = NULL;
 	drm_check_dt(egis_dev);
 #endif
@@ -1354,8 +1480,10 @@ int egisfp_probe(struct platform_device *pdev)
 #endif
 
     //Register display notifier +++
+#ifdef EGISFP_PANEL_EVENT_NOTIFIER
+	schedule_delayed_work(&egis_dev->panel_work, 0);
+#elif defined(CONFIG_DRM_PANEL_NOTIFICATIONS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
 	egis_dev->notifier = egisfp_noti_block;
-#if defined(CONFIG_DRM_PANEL_NOTIFICATIONS) && (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
 	if (egis_dev->active_panel) {
 		DEBUG_PRINT(" %s : register drm_panel_notifier \n", __func__);
 		status = drm_panel_notifier_register(egis_dev->active_panel, &egis_dev->notifier);
@@ -1365,6 +1493,7 @@ int egisfp_probe(struct platform_device *pdev)
 			egis_dev->call_back_registered = 1;
 	}
 #else
+	egis_dev->notifier = egisfp_noti_block;
 	status = ets_fb_register_client(&egis_dev->notifier);
 	if (status)
 		ERROR_PRINT("  %s : ets_fb_register_client fail: %d ", __func__, status);
