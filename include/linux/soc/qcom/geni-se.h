@@ -527,6 +527,8 @@ void geni_se_rx_dma_unprep(struct geni_se *se, dma_addr_t iova, size_t len);
 
 int geni_icc_get(struct geni_se *se, const char *icc_ddr);
 
+struct device *geni_se_wrapper_dev(struct device *dev);
+
 int geni_icc_set_bw(struct geni_se *se);
 void geni_icc_set_tag(struct geni_se *se, u32 tag);
 
