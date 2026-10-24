@@ -47,8 +47,14 @@ static inline int rproc_set_state(struct rproc *rproc, bool state)
 
 extern bool power_state_enter_into_hibernate;
 int qcom_rproc_set_dtb_firmware(struct rproc *rproc, const char *dtb_fw_name);
+struct rproc *qcom_rproc_get_pil_tz_generic(const char *fw_name);
 
 #else
+
+static inline struct rproc *qcom_rproc_get_pil_tz_generic(const char *fw_name)
+{
+	return NULL;
+}
 
 static inline int qcom_rproc_set_dtb_firmware(struct rproc *rproc, const char *dtb_fw_name)
 {

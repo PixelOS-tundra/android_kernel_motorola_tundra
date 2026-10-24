@@ -30,6 +30,8 @@
 #include <linux/soc/qcom/smem.h>
 #include <linux/soc/qcom/smem_state.h>
 #include <linux/soc/qcom/qcom_aoss.h>
+#include <linux/mailbox_client.h>
+#include <linux/mailbox/qmp.h>
 #include <soc/qcom/secure_buffer.h>
 #include <linux/pm_wakeirq.h>
 
@@ -123,6 +125,8 @@ struct qcom_adsp {
 	struct device *proxy_pds[3];
 	const char *qmp_name;
 	struct qmp *qmp;
+	struct mbox_client aop_cl;
+	struct mbox_chan *aop_mbox;
 
 	int active_pd_count;
 	int proxy_pd_count;
@@ -455,6 +459,39 @@ exit:
 	return ret;
 }
 
+/*
+ * The stock lahaina DT has no qcom,qmp handle on the PIL nodes; they signal
+ * the AOP through the msm_qmp mailbox ("mboxes"), as 5.4 subsys-pil-tz did.
+ */
+#define PIL_AOP_MSG_LEN	96
+
+static int adsp_toggle_load_state(struct qcom_adsp *adsp, bool enable)
+{
+	char buf[PIL_AOP_MSG_LEN] = {};
+	struct qmp_pkt pkt;
+	int ret;
+
+	if (adsp->qmp)
+		return qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name,
+						    enable);
+	if (!adsp->aop_mbox)
+		return 0;
+
+	snprintf(buf, sizeof(buf),
+		 "{class: image, res: load_state, name: %s, val: %s}",
+		 adsp->qmp_name, enable ? "on" : "off");
+	pkt.size = sizeof(buf);
+	pkt.data = buf;
+	ret = mbox_send_message(adsp->aop_mbox, &pkt);
+	if (ret < 0) {
+		dev_err(adsp->dev, "failed to send AOP load_state %s: %d\n",
+			enable ? "on" : "off", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static void disable_regulators(struct qcom_adsp *adsp)
 {
 	int i;
@@ -742,11 +779,9 @@ static int adsp_start(struct rproc *rproc)
 	if (ret < 0)
 		goto disable_active_pds;
 
-	if (adsp->qmp) {
-		ret = qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, true);
-		if (ret)
-			goto disable_proxy_pds;
-	}
+	ret = adsp_toggle_load_state(adsp, true);
+	if (ret)
+		goto disable_proxy_pds;
 
 	ret = clk_prepare_enable(adsp->xo);
 	if (ret)
@@ -841,8 +876,7 @@ disable_aggre2_clk:
 disable_xo_clk:
 	clk_disable_unprepare(adsp->xo);
 disable_load_state:
-	if (adsp->qmp)
-		qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
+	adsp_toggle_load_state(adsp, false);
 disable_proxy_pds:
 	adsp_pds_disable(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
 disable_active_pds:
@@ -1226,8 +1260,7 @@ static int adsp_stop(struct rproc *rproc)
 
 	scm_pas_disable_bw();
 	adsp_pds_disable(adsp, adsp->active_pds, adsp->active_pd_count);
-	if (adsp->qmp)
-		qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
+	adsp_toggle_load_state(adsp, false);
 	handover = qcom_q6v5_unprepare(&adsp->q6v5);
 	if (handover)
 		qcom_pas_handover(&adsp->q6v5);
@@ -1341,7 +1374,7 @@ begin_attach:
 	if (ret < 0)
 		goto disable_active_pds;
 
-	ret = qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, true);
+	ret = adsp_toggle_load_state(adsp, true);
 	if (ret)
 		goto disable_proxy_pds;
 
@@ -1390,7 +1423,7 @@ disable_aggre2_clk:
 disable_xo_clk:
 	clk_disable_unprepare(adsp->xo);
 disable_load_state:
-	qcom_rproc_toggle_load_state(adsp->qmp, adsp->qmp_name, false);
+	adsp_toggle_load_state(adsp, false);
 disable_proxy_pds:
 	adsp_pds_disable(adsp, adsp->proxy_pds, adsp->proxy_pd_count);
 disable_active_pds:
@@ -1491,9 +1524,17 @@ static int adsp_init_regulator(struct qcom_adsp *adsp)
 	char uv_ua[50];
 	u32 uv_ua_vals[2];
 	const char *reg_name;
+	const char *names_prop = "reg-names";
+	const char *uv_ua_fmt = "%s-uV-uA";
+
+	/* 5.4 PIL binding: qcom,proxy-reg-names and qcom,<name>-uV-uA */
+	if (of_device_is_compatible(adsp->dev->of_node, "qcom,pil-tz-generic")) {
+		names_prop = "qcom,proxy-reg-names";
+		uv_ua_fmt = "qcom,%s-uV-uA";
+	}
 
 	adsp->reg_cnt = of_property_count_strings(adsp->dev->of_node,
-						  "reg-names");
+						  names_prop);
 	if (adsp->reg_cnt <= 0) {
 		dev_err(adsp->dev, "No regulators added!\n");
 		return 0;
@@ -1506,7 +1547,7 @@ static int adsp_init_regulator(struct qcom_adsp *adsp)
 		return -ENOMEM;
 
 	for (i = 0; i < adsp->reg_cnt; i++) {
-		of_property_read_string_index(adsp->dev->of_node, "reg-names",
+		of_property_read_string_index(adsp->dev->of_node, names_prop,
 					      i, &reg_name);
 
 		adsp->regs[i].reg = devm_regulator_get(adsp->dev, reg_name);
@@ -1516,7 +1557,7 @@ static int adsp_init_regulator(struct qcom_adsp *adsp)
 		}
 
 		/* Read current(uA) and voltage(uV) value */
-		snprintf(uv_ua, sizeof(uv_ua), "%s-uV-uA", reg_name);
+		snprintf(uv_ua, sizeof(uv_ua), uv_ua_fmt, reg_name);
 		if (!of_find_property(adsp->dev->of_node, uv_ua, &len))
 			continue;
 
@@ -1797,9 +1838,14 @@ static int adsp_setup_wakeup(struct qcom_adsp *adsp)
 	return ret;
 }
 
-static int adsp_probe(struct platform_device *pdev)
+static void adsp_free_aop_mbox(void *chan)
 {
-	const struct adsp_data *desc;
+	mbox_free_channel(chan);
+}
+
+static int adsp_probe_desc(struct platform_device *pdev,
+			   const struct adsp_data *desc)
+{
 	struct qcom_adsp *adsp;
 	struct rproc *rproc;
 	const char *fw_name;
@@ -1807,10 +1853,6 @@ static int adsp_probe(struct platform_device *pdev)
 	char md_dev_name[32];
 	int ret;
 	bool signal_aop;
-
-	desc = of_device_get_match_data(&pdev->dev);
-	if (!desc)
-		return -EINVAL;
 
 	if (!qcom_scm_is_available())
 		return -EPROBE_DEFER;
@@ -1907,7 +1949,24 @@ static int adsp_probe(struct platform_device *pdev)
 	signal_aop = of_property_read_bool(pdev->dev.of_node,
 			"qcom,signal-aop");
 
-	if (signal_aop) {
+	if (signal_aop && !of_find_property(pdev->dev.of_node, "qcom,qmp", NULL) &&
+	    of_find_property(pdev->dev.of_node, "mboxes", NULL)) {
+		adsp->aop_cl.dev = adsp->dev;
+		adsp->aop_cl.tx_block = true;
+		adsp->aop_cl.tx_tout = 1000;
+		adsp->aop_mbox = mbox_request_channel(&adsp->aop_cl, 0);
+		if (IS_ERR(adsp->aop_mbox)) {
+			ret = PTR_ERR(adsp->aop_mbox);
+			adsp->aop_mbox = NULL;
+			if (ret != -EPROBE_DEFER)
+				dev_err(adsp->dev, "failed to get AOP mbox: %d\n", ret);
+			goto detach_proxy_pds;
+		}
+		ret = devm_add_action_or_reset(adsp->dev, adsp_free_aop_mbox,
+					       adsp->aop_mbox);
+		if (ret)
+			goto detach_proxy_pds;
+	} else if (signal_aop) {
 		adsp->qmp = qmp_get(adsp->dev);
 		if (IS_ERR_OR_NULL(adsp->qmp))
 			goto detach_proxy_pds;
@@ -2035,6 +2094,107 @@ free_rproc:
 	rproc_free(rproc);
 
 	return ret;
+}
+
+static struct platform_driver adsp_driver;
+
+static const struct adsp_data lahaina_adsp_resource = {
+	.crash_reason_smem = 423,
+	.firmware_name = "adsp.mdt",
+	.pas_id = 1,
+	.minidump_id = 5,
+	.auto_boot = false,
+	.ssr_name = "adsp",
+	.sysmon_name = "adsp",
+	.qmp_name = "adsp",
+	.ssctl_id = 0x14,
+};
+
+/*
+ * The stock lahaina DT describes every PAS remoteproc with the 5.4 PIL
+ * binding (compatible "qcom,pil-tz-generic"), told apart only by
+ * qcom,firmware-name. Bind the ones listed here; the SSR name matches the
+ * 5.4 subsystem name, which the qcom,glink edges ("label") and pmic_glink
+ * (qcom,subsys-name) register for.
+ */
+static const struct {
+	const char *fw_name;
+	const struct adsp_data *desc;
+} pil_tz_generic_resources[] = {
+	{ "adsp", &lahaina_adsp_resource },
+};
+
+static int adsp_pil_tz_generic_probe(struct platform_device *pdev)
+{
+	const char *fw_name;
+	int i;
+
+	if (of_property_read_string(pdev->dev.of_node, "qcom,firmware-name",
+				    &fw_name))
+		return -ENODEV;
+
+	for (i = 0; i < ARRAY_SIZE(pil_tz_generic_resources); i++)
+		if (!strcmp(fw_name, pil_tz_generic_resources[i].fw_name))
+			return adsp_probe_desc(pdev, pil_tz_generic_resources[i].desc);
+
+	return -ENODEV;
+}
+
+/**
+ * qcom_rproc_get_pil_tz_generic() - get the rproc of a 5.4-binding PIL node
+ * @fw_name:	qcom,firmware-name of the node, e.g. "adsp"
+ *
+ * For clients whose stock DT node has no qcom,rproc-handle (the 5.4
+ * adsp-loader). Drop the reference with rproc_put().
+ *
+ * Return: the rproc, NULL if it isn't probed (yet).
+ */
+struct rproc *qcom_rproc_get_pil_tz_generic(const char *fw_name)
+{
+	struct platform_device *pdev;
+	struct device_node *np;
+	struct qcom_adsp *adsp;
+	struct rproc *rproc = NULL;
+	const char *name;
+
+	for_each_compatible_node(np, NULL, "qcom,pil-tz-generic") {
+		if (of_property_read_string(np, "qcom,firmware-name", &name) ||
+		    strcmp(name, fw_name))
+			continue;
+
+		pdev = of_find_device_by_node(np);
+		of_node_put(np);
+		if (!pdev)
+			return NULL;
+
+		device_lock(&pdev->dev);
+		adsp = platform_get_drvdata(pdev);
+		if (adsp && pdev->dev.driver == &adsp_driver.driver &&
+		    try_module_get(THIS_MODULE)) {
+			rproc = adsp->rproc;
+			get_device(&rproc->dev);
+		}
+		device_unlock(&pdev->dev);
+		put_device(&pdev->dev);
+		return rproc;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(qcom_rproc_get_pil_tz_generic);
+
+static int adsp_probe(struct platform_device *pdev)
+{
+	const struct adsp_data *desc;
+
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,pil-tz-generic"))
+		return adsp_pil_tz_generic_probe(pdev);
+
+	desc = of_device_get_match_data(&pdev->dev);
+	if (!desc)
+		return -EINVAL;
+
+	return adsp_probe_desc(pdev, desc);
 }
 
 static int adsp_remove(struct platform_device *pdev)
@@ -3229,6 +3389,7 @@ static const struct of_device_id adsp_of_match[] = {
 	{ .compatible = "qcom,anorak-cdsp-pas", .data = &anorak_cdsp_resource},
 	{ .compatible = "qcom,neo-adsp-pas", .data = &neo_adsp_resource},
 	{ .compatible = "qcom,neo-cdsp-pas", .data = &neo_cdsp_resource},
+	{ .compatible = "qcom,pil-tz-generic" },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, adsp_of_match);
