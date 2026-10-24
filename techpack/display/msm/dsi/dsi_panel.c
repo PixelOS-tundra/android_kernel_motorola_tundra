@@ -2603,6 +2603,21 @@ static int dsi_panel_parse_bl_config(struct dsi_panel *panel)
 	panel->bl_config.bl_inverted_dbv = utils->read_bool(utils->data,
 		"qcom,mdss-dsi-bl-inverted-dbv");
 
+	/*
+	 * Motorola panels send the DCS brightness MSB first with
+	 * qcom,bklt-dcs-2bytes-enabled, which is the inverted DBV byte order.
+	 */
+	if (utils->read_bool(utils->data, "qcom,bklt-dcs-2bytes-enabled"))
+		panel->bl_config.bl_inverted_dbv = true;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-bl-default-level", &val);
+	if (rc)
+		panel->bl_config.brightness_default_level =
+			panel->bl_config.brightness_max_level;
+	else
+		panel->bl_config.brightness_default_level = val;
+	rc = 0;
+
 	state = utils->get_property(utils->data, "qcom,bl-dsc-cmd-state", NULL);
 	if (!state || !strcmp(state, "dsi_hs_mode"))
 		panel->bl_config.lp_mode = false;
