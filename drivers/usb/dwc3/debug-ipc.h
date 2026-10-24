@@ -45,9 +45,15 @@
 #define dbg_ep_map(ep_num, req) \
 	dwc3_dbg_dma_map(mdwc->dwc_dma_ipc_log_ctxt, ep_num, req)
 
+/* DEBUG (k61 bring-up): mirrored to printk with k61.usblog */
+extern bool k61_usblog;
 #define dbg_log_string(fmt, ...) \
+do { \
 	ipc_log_string(mdwc->dwc_ipc_log_ctxt,\
-			"%s: " fmt, __func__, ##__VA_ARGS__)
+			"%s: " fmt, __func__, ##__VA_ARGS__); \
+	if (k61_usblog) \
+		pr_info("dwc3-msm: %s: " fmt, __func__, ##__VA_ARGS__); \
+} while (0)
 
 #define dbg_trace_ctrl_req(ctrl) \
 	dwc3_dbg_trace_log_ctrl(dwc_trace_ipc_log_ctxt, ctrl)

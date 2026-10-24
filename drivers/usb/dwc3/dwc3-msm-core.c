@@ -6644,6 +6644,16 @@ static int vbus_regulator_get(struct dwc3_msm *mdwc)
  */
 static bool k61_usb_device;
 
+/* DEBUG (k61 bring-up): k61.usblog mirrors dbg_log_string() to printk */
+bool k61_usblog;
+
+static int __init k61_usblog_setup(char *str)
+{
+	k61_usblog = true;
+	return 1;
+}
+__setup("k61.usblog", k61_usblog_setup);
+
 static int __init k61_usb_device_setup(char *str)
 {
 	k61_usb_device = true;
