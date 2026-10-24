@@ -3579,6 +3579,9 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 	int i, rc = 0, num_clk = 0;
 	const char *clk_name;
 	const char *pll_byte = "pll_byte", *pll_dsi = "pll_dsi";
+	/* the lahaina 5.4 DT names the same PLL outputs mux_byte/mux_pixel */
+	const char *mux_byte = "mux_byte", *mux_pixel = "mux_pixel";
+	bool is_byte, is_pixel;
 	struct clk *dsi_clk;
 	struct dsi_clk_link_set *pll = &display->clock_info.pll_clks;
 	char *dsi_clock_name;
@@ -3596,28 +3599,33 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 
 		DSI_DEBUG("clock name:%s\n", clk_name);
 
+		is_byte = dsi_display_check_prefix(pll_byte, clk_name) ||
+			  dsi_display_check_prefix(mux_byte, clk_name);
+		is_pixel = dsi_display_check_prefix(pll_dsi, clk_name) ||
+			   dsi_display_check_prefix(mux_pixel, clk_name);
+
 		dsi_clk = devm_clk_get(&display->pdev->dev, clk_name);
 		if (IS_ERR_OR_NULL(dsi_clk)) {
 			rc = PTR_ERR(dsi_clk);
 
 			DSI_ERR("failed to get %s, rc=%d\n", clk_name, rc);
 
-			if (dsi_display_check_prefix(pll_byte, clk_name)) {
+			if (is_byte) {
 				pll->byte_clk = NULL;
 				goto error;
 			}
 
-			if (dsi_display_check_prefix(pll_dsi, clk_name)) {
+			if (is_pixel) {
 				pll->pixel_clk = NULL;
 				goto error;
 			}
 		}
 
-		if (dsi_display_check_prefix(pll_byte, clk_name)) {
+		if (is_byte) {
 			pll->byte_clk = dsi_clk;
 			continue;
 		}
-		if (dsi_display_check_prefix(pll_dsi, clk_name)) {
+		if (is_pixel) {
 			pll->pixel_clk = dsi_clk;
 			continue;
 		}
