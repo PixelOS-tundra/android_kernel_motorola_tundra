@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/panic_notifier.h>
 #include <linux/mailbox_client.h>
 #include <linux/mailbox_controller.h>
 #include <dt-bindings/clock/qcom,aop-qmp.h>
