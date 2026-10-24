@@ -170,6 +170,7 @@ obj-$(CONFIG_SXR_CAMCC_NEO) += camcc-neo.o
 obj-$(CONFIG_SXR_CAMCC_NIOBE) += camcc-niobe.o
 obj-$(CONFIG_SXR_CAMCC_SERAPH) += camcc-seraph.o
 obj-$(CONFIG_SM_CAMCC_VOLCANO) += camcc-volcano.o
+obj-$(CONFIG_MSM_CLK_AOP_QMP) += clk-aop-qmp.o
 obj-$(CONFIG_SM_GCC_LAHAINA) += gcc-lahaina.o
 obj-$(CONFIG_SM_GPUCC_LAHAINA) += gpucc-lahaina.o
 obj-$(CONFIG_SM_DISPCC_LAHAINA) += dispcc-lahaina.o
