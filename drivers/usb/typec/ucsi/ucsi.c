@@ -1129,6 +1129,20 @@ static int ucsi_register_port(struct ucsi *ucsi, struct ucsi_connector *con)
 		return dev_err_probe(ucsi->dev, PTR_ERR(con->usb_role_sw),
 			"con%d: failed to get usb role switch\n", con->num);
 
+	/*
+	 * The 5.4 binding (lahaina qcom,ucsi) has no connector nodes: the
+	 * UCSI node itself links to the controller through port/endpoint,
+	 * and 5.4 took the role switch from the UCSI device node.
+	 */
+	if (!con->usb_role_sw && con->num == 1) {
+		con->usb_role_sw = fwnode_usb_role_switch_get(dev_fwnode(ucsi->dev));
+		if (IS_ERR(con->usb_role_sw))
+			return dev_err_probe(ucsi->dev, PTR_ERR(con->usb_role_sw),
+				"con%d: failed to get usb role switch\n", con->num);
+		if (con->usb_role_sw)
+			dev_info(ucsi->dev, "con1: using the role switch of the UCSI node\n");
+	}
+
 	/* Delay other interactions with the con until registration is complete */
 	mutex_lock(&con->lock);
 
