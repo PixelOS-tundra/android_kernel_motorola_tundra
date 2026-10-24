@@ -1593,6 +1593,10 @@ static void adsp_init_bus_scaling(struct qcom_adsp *adsp)
 
 get_rproc_client:
 	adsp->bus_client = of_icc_get(adsp->dev, "rproc_ddr");
+	/* 5.4 PIL binding: one unnamed path, voted while the image loads */
+	if (IS_ERR(adsp->bus_client) &&
+	    of_device_is_compatible(adsp->dev->of_node, "qcom,pil-tz-generic"))
+		adsp->bus_client = of_icc_get(adsp->dev, NULL);
 	if (IS_ERR(adsp->bus_client))
 		dev_warn(adsp->dev, "%s: No bus client\n", __func__);
 
@@ -2111,6 +2115,26 @@ static const struct adsp_data lahaina_adsp_resource = {
 };
 
 /*
+ * MPSS on the 5.4 binding: the SSR name is the 5.4 subsystem name "modem",
+ * which the qcom,glink "modem" edge (label) and the IPA/rmnet SSR notifiers
+ * register for. Lahaina boots MPSS through TZ PAS with a single memory
+ * region (no MBA, no DSM regions). Not booted automatically: on 5.4
+ * userspace started it.
+ */
+static const struct adsp_data lahaina_mpss_resource = {
+	.crash_reason_smem = 421,
+	.firmware_name = "modem.mdt",
+	.pas_id = 4,
+	.minidump_id = 3,
+	.has_aggre2_clk = false,
+	.auto_boot = false,
+	.ssr_name = "modem",
+	.sysmon_name = "modem",
+	.qmp_name = "modem",
+	.ssctl_id = 0x12,
+};
+
+/*
  * The stock lahaina DT describes every PAS remoteproc with the 5.4 PIL
  * binding (compatible "qcom,pil-tz-generic"), told apart only by
  * qcom,firmware-name. Bind the ones listed here; the SSR name matches the
@@ -2122,6 +2146,7 @@ static const struct {
 	const struct adsp_data *desc;
 } pil_tz_generic_resources[] = {
 	{ "adsp", &lahaina_adsp_resource },
+	{ "modem", &lahaina_mpss_resource },
 };
 
 static int adsp_pil_tz_generic_probe(struct platform_device *pdev)
