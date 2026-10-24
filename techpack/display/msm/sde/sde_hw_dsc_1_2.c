@@ -296,6 +296,9 @@ static void sde_hw_dsc_config(struct sde_hw_dsc *hw_dsc,
 		data |= BIT(12);
 	if (mode & DSC_MODE_MULTIPLEX)
 		data |= BIT(13);
+	/* lahaina: command mode, as 5.4 and the bootloader program it */
+	if (!(mode & DSC_MODE_VIDEO))
+		data |= BIT(17);
 
 	SDE_REG_WRITE(dsc_c, DSC_CFG + idx, data);
 
