@@ -242,6 +242,14 @@ config QCOM_Q6V5_PAS
 	  CDSP (Compute DSP), MPSS (Modem Peripheral SubSystem), and
 	  SLPI (Sensor Low Power Island).
 
+config QCOM_ADSP_LOADER_LEGACY
+	tristate "ADSP loader for the 5.4 qcom,adsp-loader binding"
+	depends on QCOM_Q6V5_PAS
+	help
+	  Provides /sys/kernel/boot_adsp/boot for a qcom,adsp-loader DT node
+	  without qcom,rproc-handle (the 5.4 binding), booting the ADSP of
+	  the qcom,pil-tz-generic node named "adsp". Writing 1 boots it.
+
 config QCOM_SPSS
 	tristate "QTI Secure Subsystem Peripheral loading support"
 	depends on OF && ARCH_QCOM
