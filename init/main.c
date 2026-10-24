@@ -1683,6 +1683,7 @@ static bool bringup_stop;
  */
 bool k61_stop_init;
 bool k61_stop_exec;
+bool k61_stop_data_ro;
 static unsigned int k61_stop_timeout_s;
 
 static void k61_stop_timeout(struct timer_list *t)
@@ -1706,6 +1707,15 @@ static int __init bringup_stop_setup(char *str)
 	return 1;
 }
 __setup("k61.stop", bringup_stop_setup);
+
+static int __init k61_stop_data_setup(char *str)
+{
+	if (strcmp(str, "ro"))
+		return 0;
+	k61_stop_data_ro = true;
+	return 1;
+}
+__setup("k61.data=", k61_stop_data_setup);
 
 /*
  * "k61.hold=<s>" keeps the kernel running for that many seconds at the
@@ -1794,8 +1804,11 @@ static int __ref kernel_init(void *unused)
 		wait_for_device_probe();
 		driver_probe_state_dump();
 		mod_timer(&k61_stop_timer, jiffies + k61_stop_timeout_s * HZ);
-		pr_info("k61.stop: %s mode, guards on, timeout %us\n",
-			k61_stop_exec ? "init" : "init2", k61_stop_timeout_s);
+		pr_info("k61.stop: %s mode, guards on, timeout %us%s\n",
+			k61_stop_exec ? "init" : "init2", k61_stop_timeout_s,
+			k61_stop_data_ro ? ", data read-only" : "");
+	} else {
+		k61_stop_data_ro = false;
 	}
 
 	system_state = SYSTEM_FREEING_INITMEM;

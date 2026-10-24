@@ -507,18 +507,32 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 	 * UFS LUNs and dm devices on top of them) for writing. Loop and zram
 	 * devices, which apexd and swap use, stay writable, and so does the
 	 * TZ secure storage partition (ssd), which qseecomd serves to the TAs
-	 * on every boot.
+	 * on every boot. With k61.data=ro, metadata, userdata and every dm
+	 * device (so dm-default-key on userdata) can't be opened for writing,
+	 * which makes fsck, mkfs and wipes fail without stopping the run.
 	 */
 	if (k61_stop_init && (filp->f_mode & FMODE_WRITE) &&
 	    (!strncmp(bdev->bd_disk->disk_name, "sd", 2) ||
 	     !strncmp(bdev->bd_disk->disk_name, "dm-", 3))) {
-		if (bdev->bd_meta_info &&
-		    !strcmp(bdev->bd_meta_info->volname, "ssd"))
+		const char *volname = bdev->bd_meta_info ?
+				      (const char *)bdev->bd_meta_info->volname : "";
+
+		if (!strcmp(volname, "ssd")) {
 			pr_info("k61.stop: allowing write open of %pg (ssd) by %s[%d]\n",
 				bdev, current->comm, task_pid_nr(current));
-		else
+		} else if (k61_stop_data_ro &&
+			   (!strncmp(bdev->bd_disk->disk_name, "dm-", 3) ||
+			    !strcmp(volname, "metadata") ||
+			    !strcmp(volname, "userdata"))) {
+			pr_info("k61.stop: denying write open of %pD (%pg) by %s[%d]\n",
+				filp, bdev, current->comm,
+				task_pid_nr(current));
+			blkdev_put(bdev, filp->f_mode);
+			return -EROFS;
+		} else {
 			k61_stop_guard_trip("refusing write open of %pD (%pg)",
 					    filp, bdev);
+		}
 	}
 
 	filp->private_data = bdev;

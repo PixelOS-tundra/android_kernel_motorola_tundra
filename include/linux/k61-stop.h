@@ -6,6 +6,11 @@
  * may not reboot; doing so trips the guard, which panics. With "init", PID 1
  * executing /system/bin/init (the end of first stage) panics as well. In
  * both, the block layer refuses kernel writes to the UFS LUNs.
+ *
+ * "k61.data=ro" (with init2, Phase 2.4a) lets /metadata and /data mount:
+ * read-write block mounts become read-only mounts, and userspace write opens
+ * of metadata, userdata and dm devices fail with -EROFS (so fsck, mkfs and
+ * wipes fail cleanly) instead of tripping the guard.
  */
 #ifndef _LINUX_K61_STOP_H
 #define _LINUX_K61_STOP_H
@@ -14,6 +19,7 @@
 
 extern bool k61_stop_init;
 extern bool k61_stop_exec;
+extern bool k61_stop_data_ro;
 
 __printf(1, 2) __noreturn void k61_stop_guard_trip(const char *fmt, ...);
 __printf(1, 2) void k61_stop_guard_trip_async(const char *fmt, ...);
