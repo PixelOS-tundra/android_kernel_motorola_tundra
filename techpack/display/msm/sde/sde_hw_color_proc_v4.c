@@ -809,17 +809,6 @@ int sde_spr_check_init_cfg(struct sde_hw_dspp *ctx, void *cfg)
 
 	spr_payload = hw_cfg->payload;
 
-	if (spr_payload->cfg18_en) {
-		bool invalid = spr_payload->cfg11[0] != 1 || spr_payload->cfg11[1] != 0 ||
-			       spr_payload->cfg11[2] != 1;
-
-		if (spr_payload->cfg4 || invalid) {
-			DRM_ERROR("CFG18 can't be enabled with this config. CFG4: %u CFG11: %u\n",
-				spr_payload->cfg4, invalid);
-			return -EINVAL;
-		}
-	}
-
 	return rc;
 }
 

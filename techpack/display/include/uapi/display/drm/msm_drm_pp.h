@@ -148,7 +148,6 @@ struct drm_msm_memcol {
 #define SIXZONE_HUE_ENABLE (1 << 0)
 #define SIXZONE_SAT_ENABLE (1 << 1)
 #define SIXZONE_VAL_ENABLE (1 << 2)
-#define SIXZONE_SV_ENABLE (1 << 3)
 /* struct drm_msm_sixzone_curve - Sixzone HSV adjustment curve structure.
  * @p0: Hue adjustment.
  * @p1: Saturation/Value adjustment.
@@ -163,16 +162,12 @@ struct drm_msm_sixzone_curve {
  *         - SIXZONE_HUE_ENABLE: Enable hue adjustment
  *         - SIXZONE_SAT_ENABLE: Enable saturation adjustment
  *         - SIXZONE_VAL_ENABLE: Enable value adjustment
- *         - SIXZONE_SV_ENABLE: Enable SV feature
  * @threshold: threshold qualifier.
  * @adjust_p0: Adjustment curve.
  * @adjust_p1: Adjustment curve.
  * @sat_hold: Saturation hold info.
  * @val_hold: Value hold info.
  * @curve: HSV adjustment curve lut.
- * @sat_adjust_p0: Saturation adjustment curve.
- * @sat_adjust_p1: Saturation adjustment curve.
- * @curve_p2: Saturation Mid/Saturation High adjustment
  */
 struct drm_msm_sixzone {
 	__u64 flags;
@@ -182,9 +177,6 @@ struct drm_msm_sixzone {
 	__u32 sat_hold;
 	__u32 val_hold;
 	struct drm_msm_sixzone_curve curve[SIXZONE_LUT_SIZE];
-	__u32 sat_adjust_p0;
-	__u32 sat_adjust_p1;
-	__u32 curve_p2[SIXZONE_LUT_SIZE];
 };
 
 #define GAMUT_3D_MODE_17 1
@@ -495,7 +487,7 @@ struct drm_msm_ad4_roi_cfg {
 #define LTM_DATA_SIZE_3 33
 #define LTM_BUFFER_SIZE 5
 #define LTM_GUARD_BYTES 255
-#define LTM_BLOCK_SIZE 4
+#define LTM_BLOCK_SIZE 2
 
 #define LTM_STATS_SAT (1 << 1)
 #define LTM_STATS_MERGE_SAT (1 << 2)
@@ -587,7 +579,6 @@ struct drm_msm_ltm_buffer {
 #define SPR_INIT_PARAM_SIZE_3 16
 #define SPR_INIT_PARAM_SIZE_4 24
 #define SPR_INIT_PARAM_SIZE_5 32
-#define SPR_INIT_PARAM_SIZE_6 7
 #define SPR_FLAG_BYPASS (1 << 0)
 
 /**
@@ -613,8 +604,6 @@ struct drm_msm_spr_init_cfg {
 	__u16 cfg15[SPR_INIT_PARAM_SIZE_5];
 	int cfg16[SPR_INIT_PARAM_SIZE_3];
 	int cfg17[SPR_INIT_PARAM_SIZE_4];
-	__u16 cfg18_en;
-	__u8 cfg18[SPR_INIT_PARAM_SIZE_6];
 };
 
 /**
@@ -693,7 +682,6 @@ struct drm_msm_dem_cfg {
 	__u32 c1_depth;
 	__u32 c2_depth;
 	__u32 src_id;
-	__u32 cfg0_param2_idx;
 };
 
 struct drm_msm_dem_cfg0_param2 {
@@ -729,8 +717,6 @@ struct drm_msm_rc_mask_cfg {
 	__u64 cfg_param_07;
 	__u32 cfg_param_08;
 	__u64 cfg_param_09[RC_DATA_SIZE_MAX];
-	__u32 height;
-	__u32 width;
 };
 
 #define FP16_SUPPORTED

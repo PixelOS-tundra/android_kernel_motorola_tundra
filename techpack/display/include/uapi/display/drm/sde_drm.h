@@ -269,13 +269,11 @@ struct sde_drm_de_v1 {
 /* Disable dynamic expansion */
 #define SDE_DYN_EXP_DISABLE 0x1
 
-#define SDE_DE_LPF_BLEND_FILT
 #define SDE_DE_LPF_BLEND_FLAG_EN (1 << 0)
 
 #define SDE_DRM_QSEED3LITE
 #define SDE_DRM_QSEED4
 #define SDE_DRM_INLINE_PREDOWNSCALE
-#define SDE_DRM_QSEED6
 
 /**
  * struct sde_drm_scaler_v2 - version 2 of struct sde_drm_scaler
@@ -313,12 +311,6 @@ struct sde_drm_de_v1 {
  * @pre_downscale_x_1  Pre-downscale ratio, x-direction, plane 1(UV)
  * @pre_downscale_y_0  Pre-downscale ratio, y-direction, plane 0(Y/RGB)
  * @pre_downscale_y_1  Pre-downscale ratio, y-direction, plane 1(UV)
- * @de_lpf_flags:      Detail enhancer lpf blned configuration flags
- * @de_lpf_h:          Detail enhancer lpf blend high
- * @de_lpf_l:          Detail enhancer lpf blend low
- * @de_lpf_m:          Detail enhancer lpf blend medium
- * @dir45_en:          45/-45 degree direction filtering enable
- * @cor_en:            corner enhancer enable
  */
 struct sde_drm_scaler_v2 {
 	/*
@@ -384,17 +376,10 @@ struct sde_drm_scaler_v2 {
 	__u32 pre_downscale_x_1;
 	__u32 pre_downscale_y_0;
 	__u32 pre_downscale_y_1;
-
-	__u32 de_lpf_flags;
-	__u32 de_lpf_h;
-	__u32 de_lpf_l;
-	__u32 de_lpf_m;
-	__u32 dir45_en;
-	__u32 cor_en;
 };
 
 /* Number of dest scalers supported */
-#define SDE_MAX_DS_COUNT 4
+#define SDE_MAX_DS_COUNT 2
 
 /*
  * Destination scaler flag config
@@ -526,22 +511,15 @@ struct sde_drm_wb_cfg {
 };
 
 #define SDE_MAX_ROI_V1	4
-#define SDE_DRM_SPR_ROI	1
-/* DRM_ROI_CONFIG_FLAGS */
-#define SDE_DRM_ROI_SPR_FLAG_EN	(1 << 0)
 
 /**
  * struct sde_drm_roi_v1 - list of regions of interest for a drm object
  * @num_rects: number of valid rectangles in the roi array
  * @roi: list of roi rectangles
- * @roi_feature_flags: flags indicates that specific roi rect is valid or not
- * @spr_roi: list of roi rectangles for spr
  */
 struct sde_drm_roi_v1 {
 	__u32 num_rects;
 	struct drm_clip_rect roi[SDE_MAX_ROI_V1];
-	__u32 roi_feature_flags;
-	struct drm_clip_rect spr_roi[SDE_MAX_ROI_V1];
 };
 
 /**
@@ -560,6 +538,11 @@ struct sde_drm_roi_v1 {
 #define SDE_RECOVERY_SUCCESS		0
 #define SDE_RECOVERY_CAPTURE		1
 #define SDE_RECOVERY_HARD_RESET		2
+
+/**
+ * sde fod dim layer
+ */
+#define FOD_PRESSED_LAYER_ZORDER	0x20000000u
 
 /**
  * Define UBWC statistics config
@@ -973,6 +956,27 @@ struct sde_drm_dnsc_blur_cfg {
 			DRM_MSM_POWER_CTRL), struct drm_msm_power_ctrl)
 #define DRM_IOCTL_MSM_DISPLAY_HINT DRM_IOW((DRM_COMMAND_BASE + \
 			DRM_MSM_DISPLAY_HINT), struct drm_msm_display_hint)
+
+/* panel feature */
+typedef enum {
+	PARAM_HBM = 0,
+	PARAM_CABC,
+	PARAM_ACL,
+	PARAM_DC,
+	POWER_MODE_MAX_NUM,
+	PARAM_COLOR = POWER_MODE_MAX_NUM,
+	PARAM_MAX_NUM
+} paramId_t;
+
+struct panel_param_info {
+	paramId_t param_idx;
+	__u32 value;
+};
+
+#define DRM_SET_PANEL_FEATURE	(DRM_COMMAND_END -1)
+#define DRM_IOCTL_SET_PANEL_FEATURE          DRM_IOWR(DRM_SET_PANEL_FEATURE, struct panel_param_info)
+#define DRM_GET_PANEL_FEATURE	(DRM_COMMAND_END-2)
+#define DRM_IOCTL_GET_PANEL_FEATURE          DRM_IOWR(DRM_GET_PANEL_FEATURE, struct panel_param_info)
 
 #if defined(__cplusplus)
 }
