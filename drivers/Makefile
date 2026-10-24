@@ -190,3 +190,5 @@ obj-$(CONFIG_COUNTER)		+= counter/
 obj-$(CONFIG_MOST)		+= most/
 obj-$(CONFIG_PECI)		+= peci/
 obj-$(CONFIG_HTE)		+= hte/
+obj-$(CONFIG_MMI_ANNOTATE)	+= mmi_annotate/
+obj-$(CONFIG_MMI_INFO)		+= mmi_info/
