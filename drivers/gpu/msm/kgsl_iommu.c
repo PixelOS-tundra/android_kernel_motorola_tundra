@@ -1273,6 +1273,13 @@ static void kgsl_iommu_set_ttbr0(struct kgsl_iommu_context *context,
 	if (!context->domain)
 		return;
 
+	/*
+	 * Without per-process pagetables (no qcom,adreno-smmu SMMU) there is
+	 * no adreno_smmu_priv to program TTBR0 through.
+	 */
+	if (!test_bit(KGSL_MMU_IOPGTABLE, &mmu->features))
+		return;
+
 	adreno_smmu = dev_get_drvdata(&context->pdev->dev);
 
 	/* Enable CX and clocks before we call into SMMU to setup registers */
