@@ -9,8 +9,8 @@
  *
  * "k61.data=ro" (with init2, Phase 2.4a) lets /metadata and /data mount:
  * read-write block mounts become read-only mounts, and userspace write opens
- * of metadata, userdata and dm devices fail with -EROFS (so fsck, mkfs and
- * wipes fail cleanly) instead of tripping the guard. "k61.data_hold=<s>"
+ * of storage other than ssd fail with -EROFS (so fsck, mkfs and wipes fail
+ * cleanly) instead of tripping the guard. "k61.data_hold=<s>"
  * (default 30) panics that many seconds after /data is mounted.
  */
 #ifndef _LINUX_K61_STOP_H
