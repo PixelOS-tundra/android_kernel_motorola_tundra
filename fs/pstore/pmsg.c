@@ -7,6 +7,7 @@
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/init.h>
+#include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/string.h>
 #include <linux/uaccess.h>
@@ -15,11 +16,23 @@
 static DEFINE_MUTEX(pmsg_lock);
 
 /*
- * DEBUG (bring-up): "k61.pmsg_drop=<comm>,..." silently drops pmsg writes
- * from tasks (or thread groups) with those names, so a noisy daemon can't
- * fill the pmsg ramoops zone and push out the logs of interest.
+ * DEBUG (bring-up): "k61.pmsg_drop=<comm>,..." silently drops the pmsg
+ * records of processes with those names, so a noisy daemon can't fill the
+ * pmsg ramoops zone and push out the logs of interest. On user builds only
+ * logd writes pmsg, for every client, so the record header's pid names the
+ * process, not current. Each record arrives as several writes (one per
+ * writev segment); once a header matches, the rest of the record is
+ * dropped too.
  */
 static char k61_pmsg_drop[64];
+static size_t k61_pmsg_skip;	/* rest of a dropped record; pmsg_lock */
+
+struct k61_pmsg_header {	/* android_pmsg_log_header_t */
+	u8 magic;		/* 'l' */
+	__le16 len;		/* whole record, this header included */
+	__le16 uid;
+	__le16 pid;
+} __packed;
 
 static int __init k61_pmsg_drop_setup(char *str)
 {
@@ -28,23 +41,52 @@ static int __init k61_pmsg_drop_setup(char *str)
 }
 __setup("k61.pmsg_drop=", k61_pmsg_drop_setup);
 
-static bool k61_pmsg_dropped(void)
+static bool k61_pmsg_drop_listed(const char *comm)
 {
-	const char *comm = current->comm;
-	const char *leader = current->group_leader->comm;
 	const char *p = k61_pmsg_drop;
 	size_t len;
 
 	while (*p) {
 		len = strcspn(p, ",");
-		if (len && ((len == strlen(comm) && !strncmp(p, comm, len)) ||
-			    (len == strlen(leader) && !strncmp(p, leader, len))))
+		if (len && len == strlen(comm) && !strncmp(p, comm, len))
 			return true;
 		p += len;
 		if (*p)
 			p++;
 	}
 	return false;
+}
+
+/* Called under pmsg_lock for every write */
+static bool k61_pmsg_dropped(const char __user *buf, size_t count)
+{
+	struct k61_pmsg_header hdr;
+	char comm[TASK_COMM_LEN];
+	struct task_struct *task;
+	bool found = false;
+	size_t len;
+
+	if (k61_pmsg_skip) {
+		k61_pmsg_skip -= min(count, k61_pmsg_skip);
+		return true;
+	}
+	if (count < sizeof(hdr) || copy_from_user(&hdr, buf, sizeof(hdr)) ||
+	    hdr.magic != 'l')
+		return false;
+
+	rcu_read_lock();
+	task = find_task_by_vpid(le16_to_cpu(hdr.pid));
+	if (task) {
+		get_task_comm(comm, task);
+		found = true;
+	}
+	rcu_read_unlock();
+	if (!found || !k61_pmsg_drop_listed(comm))
+		return false;
+
+	len = le16_to_cpu(hdr.len);
+	k61_pmsg_skip = len > count ? len - count : 0;
+	return true;
 }
 
 static ssize_t write_pmsg(struct file *file, const char __user *buf,
@@ -56,9 +98,6 @@ static ssize_t write_pmsg(struct file *file, const char __user *buf,
 	if (!count)
 		return 0;
 
-	if (k61_pmsg_drop[0] && k61_pmsg_dropped())
-		return count;
-
 	pstore_record_init(&record, psinfo);
 	record.type = PSTORE_TYPE_PMSG;
 	record.size = count;
@@ -68,6 +107,10 @@ static ssize_t write_pmsg(struct file *file, const char __user *buf,
 		return -EFAULT;
 
 	mutex_lock(&pmsg_lock);
+	if (k61_pmsg_drop[0] && k61_pmsg_dropped(buf, count)) {
+		mutex_unlock(&pmsg_lock);
+		return count;
+	}
 	ret = psinfo->write_user(&record, buf);
 	mutex_unlock(&pmsg_lock);
 	return ret ? ret : count;
