@@ -137,6 +137,7 @@ struct dsi_backlight_config {
 	u32 bl_scale;
 	u32 bl_scale_sv;
 	bool bl_inverted_dbv;
+	bool bl_remap;
 	u32 brightness_default_level;
 	/* digital dimming backlight LUT */
 	struct drm_msm_dimming_bl_lut *dimming_bl_lut;

@@ -2610,6 +2610,9 @@ static int dsi_panel_parse_bl_config(struct dsi_panel *panel)
 	if (utils->read_bool(utils->data, "qcom,bklt-dcs-2bytes-enabled"))
 		panel->bl_config.bl_inverted_dbv = true;
 
+	panel->bl_config.bl_remap = utils->read_bool(utils->data,
+		"qcom,mdss-dsi-bl-remap");
+
 	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-bl-default-level", &val);
 	if (rc)
 		panel->bl_config.brightness_default_level =
