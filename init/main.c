@@ -1865,17 +1865,15 @@ bool k61_stop_rw_mount_allowed(const struct path *path)
 }
 
 /*
- * k61.data=rw: stop before apexd (which activates and may revert or delete
- * the /data APEXes) and before zygote (whose PackageManager scan rewrites
- * the package state), so 6.1 only writes what init and vold do while
- * setting up /data.
+ * k61.data=rw: stop before zygote (whose PackageManager scan rewrites the
+ * package state), so 6.1 only writes what init, vold, apexd and odsign do
+ * while setting up /data.
  */
 void k61_stop_exec_check(const char *filename)
 {
 	if (!k61_stop_data_rw || !READ_ONCE(k61_stop_data_mounted))
 		return;
-	if (!strcmp(filename, "/system/bin/apexd") ||
-	    !strncmp(filename, "/system/bin/app_process", 23))
+	if (!strncmp(filename, "/system/bin/app_process", 23))
 		k61_stop_guard_trip("stopping at the exec of %s by %s[%d]",
 				    filename, current->comm,
 				    task_pid_nr(current));

@@ -19,9 +19,9 @@
  * "k61.data=rw" (Phase 2.4b) is the same, except that the /data mount is
  * read-write and the kernel may write the userdata partition (through
  * f2fs and dm-default-key only; userspace write opens stay denied, and
- * /metadata stays read-only). The run stops at the first exec of apexd or
- * app_process after /data is mounted. Any trip then syncs, closes the
- * userdata write window and only then holds and panics.
+ * /metadata stays read-only). The run stops at the first exec of
+ * app_process (zygote) after /data is mounted. Any trip then syncs, closes
+ * the userdata write window and only then holds and panics.
  */
 #ifndef _LINUX_K61_STOP_H
 #define _LINUX_K61_STOP_H

@@ -1920,7 +1920,7 @@ static int do_execveat_common(int fd, struct filename *filename,
 	if (k61_stop_exec && task_pid_nr(current) == 1 &&
 	    !strcmp(filename->name, "/system/bin/init"))
 		panic("k61.stop: PID 1 exec %s", filename->name);
-	/* DEBUG (k61.data=rw): stop before apexd and zygote */
+	/* DEBUG (k61.data=rw): stop before zygote */
 	if (k61_stop_init)
 		k61_stop_exec_check(filename->name);
 
