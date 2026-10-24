@@ -212,8 +212,14 @@ struct egisfp_dev_t
 	struct pinctrl_state *vcc_low;
 	struct pinctrl_state *irq_active;
 	struct notifier_block notifier;
-#if defined(CONFIG_DRM_PANEL) && LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+#if (defined(CONFIG_DRM_PANEL) && LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)) || \
+    IS_ENABLED(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
 	struct drm_panel *active_panel;
+#endif
+#if IS_ENABLED(CONFIG_QCOM_PANEL_EVENT_NOTIFIER)
+	void *panel_cookie;
+	struct delayed_work panel_work;
+	int panel_retries;
 #endif
 };
 
