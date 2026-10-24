@@ -243,12 +243,13 @@ config QCOM_Q6V5_PAS
 	  SLPI (Sensor Low Power Island).
 
 config QCOM_ADSP_LOADER_LEGACY
-	tristate "ADSP loader for the 5.4 qcom,adsp-loader binding"
+	tristate "DSP loaders for the 5.4 lahaina loader bindings"
 	depends on QCOM_Q6V5_PAS
 	help
-	  Provides /sys/kernel/boot_adsp/boot for a qcom,adsp-loader DT node
-	  without qcom,rproc-handle (the 5.4 binding), booting the ADSP of
-	  the qcom,pil-tz-generic node named "adsp". Writing 1 boots it.
+	  Provides /sys/kernel/boot_{adsp,cdsp,slpi}/boot for the 5.4
+	  qcom,adsp-loader, qcom,cdsp-loader and qcom,msm-ssc-sensors DT
+	  nodes, which have no qcom,rproc-handle. Writing 1 boots the rproc
+	  of the qcom,pil-tz-generic node with the matching firmware name.
 
 config QCOM_SPSS
 	tristate "QTI Secure Subsystem Peripheral loading support"
