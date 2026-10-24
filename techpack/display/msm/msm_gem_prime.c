@@ -156,7 +156,20 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 	}
 
 	ret = mem_buf_dma_buf_copy_vmperm(dma_buf, &vmid_list, &perms_list, &nelems);
-	if (ret) {
+	if (ret == -EINVAL) {
+		/*
+		 * Not a qcom heap buffer (the /dev/ion compat and qcom heaps
+		 * export through mem_buf; the AOSP heaps don't). Such a buffer
+		 * is only mapped by HLOS, so import it as non-secure, as 5.4
+		 * did for any buffer without CP flags.
+		 */
+		DRM_DEBUG("no vmperm for dma-buf %s, importing as non-secure\n",
+				dma_buf->exp_name);
+		vmid_list = NULL;
+		perms_list = NULL;
+		nelems = 0;
+		ret = 0;
+	} else if (ret) {
 		DRM_ERROR("get vmid list failure, ret:%d", ret);
 		goto fail_put;
 	}
