@@ -20,6 +20,7 @@
 
 #include <asm/unaligned.h>
 #include <crypto/skcipher.h>
+#include <linux/k61-stop.h>
 #include <linux/key-type.h>
 #include <linux/random.h>
 #include <linux/seq_file.h>
@@ -680,7 +681,7 @@ out_put:
  * For more details, see the "FS_IOC_ADD_ENCRYPTION_KEY" section of
  * Documentation/filesystems/fscrypt.rst.
  */
-int fscrypt_ioctl_add_key(struct file *filp, void __user *_uarg)
+static int __fscrypt_ioctl_add_key(struct file *filp, void __user *_uarg)
 {
 	struct super_block *sb = file_inode(filp)->i_sb;
 	struct fscrypt_add_key_arg __user *uarg = _uarg;
@@ -751,6 +752,34 @@ int fscrypt_ioctl_add_key(struct file *filp, void __user *_uarg)
 	err = 0;
 out_wipe_secret:
 	wipe_master_key_secret(&secret);
+	return err;
+}
+
+/*
+ * DEBUG (k61.stop): trace FS_IOC_ADD_ENCRYPTION_KEY. Only the argument
+ * header is read back (flags, sizes and the key specifier, which holds the
+ * key identifier on success), never the key itself.
+ */
+int fscrypt_ioctl_add_key(struct file *filp, void __user *_uarg)
+{
+	struct fscrypt_add_key_arg arg;
+	int err = __fscrypt_ioctl_add_key(filp, _uarg);
+
+	if (!k61_stop_init)
+		return err;
+	if (copy_from_user(&arg, _uarg, sizeof(arg))) {
+		pr_info("k61.stop: fscrypt add key on %s by %s[%d] -> %d\n",
+			file_inode(filp)->i_sb->s_id, current->comm,
+			task_pid_nr(current), err);
+		return err;
+	}
+	pr_info("k61.stop: fscrypt add key on %s by %s[%d]: flags %#x, %u bytes, key id %u, spec type %u %*phN -> %d\n",
+		file_inode(filp)->i_sb->s_id, current->comm,
+		task_pid_nr(current), arg.__flags, arg.raw_size, arg.key_id,
+		arg.key_spec.type,
+		arg.key_spec.type == FSCRYPT_KEY_SPEC_TYPE_IDENTIFIER ?
+		FSCRYPT_KEY_IDENTIFIER_SIZE : FSCRYPT_KEY_DESCRIPTOR_SIZE,
+		arg.key_spec.u.identifier, err);
 	return err;
 }
 EXPORT_SYMBOL_GPL(fscrypt_ioctl_add_key);

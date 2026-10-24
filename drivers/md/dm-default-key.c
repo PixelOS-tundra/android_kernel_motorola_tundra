@@ -5,6 +5,7 @@
 
 #include <linux/blk-crypto.h>
 #include <linux/device-mapper.h>
+#include <linux/k61-stop.h>
 #include <linux/module.h>
 
 #define DM_MSG_PREFIX		"default-key"
@@ -249,10 +250,23 @@ static int default_key_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 
 	ti->num_flush_bios = 1;
 
+	/* DEBUG (k61.stop): trace the metadata encryption setup */
+	if (k61_stop_init)
+		pr_info("k61.stop: dm-default-key %s: %s, %s key of %u bytes, on %pg at %llu, %u-byte sectors\n",
+			dm_device_name(dm_table_get_md(ti->table)),
+			dkc->cipher_string,
+			dkc->key_type == BLK_CRYPTO_KEY_TYPE_HW_WRAPPED ?
+			"hw-wrapped" : "standard", raw_key_size,
+			dkc->dev->bdev, (unsigned long long)dkc->start,
+			dkc->sector_size);
 	err = 0;
 	goto out;
 
 bad:
+	if (k61_stop_init)
+		pr_info("k61.stop: dm-default-key %s: %s -> %d\n",
+			dm_device_name(dm_table_get_md(ti->table)),
+			ti->error ?: "?", err);
 	default_key_dtr(ti);
 out:
 	memzero_explicit(raw_key, sizeof(raw_key));
