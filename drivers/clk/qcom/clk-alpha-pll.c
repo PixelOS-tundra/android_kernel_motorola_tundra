@@ -1124,6 +1124,17 @@ static long alpha_pll_huayra_round_rate(struct clk_hw *hw, unsigned long rate,
 	return alpha_huayra_pll_round_rate(rate, *prate, &l, &a);
 }
 
+/*
+ * The *_pll_configure() helpers run before the PLL is registered, when
+ * clk_hw_get_name() would dereference a NULL hw->core.
+ */
+static const char *alpha_pll_name(struct clk_alpha_pll *pll)
+{
+	if (pll->clkr.hw.init)
+		return pll->clkr.hw.init->name;
+	return clk_hw_get_name(&pll->clkr.hw);
+}
+
 static int trion_pll_is_enabled(struct clk_alpha_pll *pll,
 				struct regmap *regmap)
 {
@@ -2130,8 +2141,7 @@ int clk_lucid_5lpe_pll_configure(struct clk_alpha_pll *pll,
 	if (ret < 0)
 		return ret;
 	else if (ret) {
-		pr_warn("%s PLL is already enabled\n",
-				clk_hw_get_name(&pll->clkr.hw));
+		pr_warn("%s PLL is already enabled\n", alpha_pll_name(pll));
 		return 0;
 	}
 
@@ -3074,8 +3084,7 @@ static int clk_zonda_5lpe_pll_enable(struct clk_hw *hw)
 	if (ret < 0)
 		return ret;
 	else if (ret) {
-		pr_warn("%s PLL is already enabled\n",
-				clk_hw_get_name(&pll->clkr.hw));
+		pr_warn("%s PLL is already enabled\n", alpha_pll_name(pll));
 		return 0;
 	}
 
@@ -3611,7 +3620,7 @@ static int _alpha_pll_lucid_evo_enable(struct clk_hw *hw)
 	if (ret < 0) {
 		return ret;
 	} else if (ret) {
-		pr_warn("%s PLL is already enabled\n", clk_hw_get_name(&pll->clkr.hw));
+		pr_warn("%s PLL is already enabled\n", alpha_pll_name(pll));
 		return 0;
 	}
 
