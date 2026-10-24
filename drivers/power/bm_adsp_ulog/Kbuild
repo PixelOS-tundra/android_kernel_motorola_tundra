@@ -1,0 +1,2 @@
+obj-$(CONFIG_BM_ADSP_ULOG) += bm_adsp_ulog.o
+
