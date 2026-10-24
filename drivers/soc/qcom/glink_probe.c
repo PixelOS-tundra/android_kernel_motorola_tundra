@@ -70,11 +70,27 @@ static int glink_probe_ssr_cb(struct notifier_block *this,
 static int glink_probe_smem_reg(struct edge_info *einfo)
 {
 	struct device *dev = einfo->dev;
+	int ret;
 
 	einfo->glink = qcom_glink_smem_register(dev, einfo->node);
 	if (IS_ERR_OR_NULL(einfo->glink)) {
 		GLINK_ERR(dev, "register failed for %s\n", einfo->ssr_label);
 		einfo->glink = NULL;
+		return 0;
+	}
+
+	/*
+	 * Registering only sets up the edge; the IRQ and the version
+	 * handshake come with qcom_glink_smem_start(), which the remoteproc
+	 * glink subdev calls after the boot. Edges from this qcom,glink node
+	 * are registered after the boot already, so start them right away.
+	 */
+	ret = qcom_glink_smem_start(einfo->glink);
+	if (ret) {
+		GLINK_ERR(dev, "start failed for %s: %d\n", einfo->ssr_label, ret);
+		qcom_glink_smem_unregister(einfo->glink);
+		einfo->glink = NULL;
+		return 0;
 	}
 	GLINK_INFO("register successful for %s\n", einfo->ssr_label);
 
