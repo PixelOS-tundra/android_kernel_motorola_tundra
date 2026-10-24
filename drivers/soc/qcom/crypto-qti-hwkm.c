@@ -54,6 +54,28 @@ union crypto_cfg {
 static bool qti_hwkm_init_done;
 static int offset;
 
+#if IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
+/*
+ * qti_hwkm_init() ends with SET_TPKEY, a KM master command, so on HWKM v1
+ * the HWKM clock has to be on for it. 5.4 initialized under the same clock
+ * vote as the key programming; without it the master never responds
+ * ("rsp fifo data not available") and no key can be programmed.
+ */
+static int crypto_qti_hwkm_init(const struct ice_mmio_data *mmio_data)
+{
+	int err;
+
+	err = qti_hwkm_clocks(true);
+	if (err)
+		return err;
+	err = qti_hwkm_init(mmio_data);
+	qti_hwkm_clocks(false);
+	return err;
+}
+#else
+#define crypto_qti_hwkm_init qti_hwkm_init
+#endif
+
 static int crypto_qti_program_hwkm_tz(const struct blk_crypto_key *key,
 						unsigned int slot)
 {
@@ -317,7 +339,7 @@ int crypto_qti_program_key(const struct ice_mmio_data *mmio_data,
 #elif IS_ENABLED(CONFIG_QTI_HW_KEY_MANAGER_V1)
 	if (!qti_hwkm_init_done) {
 #endif
-		err = qti_hwkm_init(mmio_data);
+		err = crypto_qti_hwkm_init(mmio_data);
 		if (err) {
 			pr_err("%s: Error with HWKM init %d\n", __func__, err);
 			return -EINVAL;
@@ -534,7 +556,7 @@ int crypto_qti_derive_raw_secret_platform(const struct ice_mmio_data *mmio_data,
 	 * programmed yet or after a UFS reset cleared qti_hwkm_init_done.
 	 */
 	if (!qti_hwkm_init_done) {
-		err = qti_hwkm_init(mmio_data);
+		err = crypto_qti_hwkm_init(mmio_data);
 		if (err) {
 			pr_err("%s: Error with HWKM init %d\n", __func__, err);
 			return -EINVAL;
