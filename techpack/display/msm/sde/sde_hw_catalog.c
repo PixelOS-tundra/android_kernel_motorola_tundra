@@ -1782,6 +1782,7 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 	struct sde_dt_props *props_tmp = NULL;
 	struct device_node *snp = NULL;
 	const char *type;
+	int dgm_order = 0;
 
 	snp = of_get_child_by_name(np, sspp_prop[SSPP_DMA_BLOCKS].prop_name);
 	if (snp) {
@@ -1802,12 +1803,19 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 					rc = PTR_ERR(props_tmp);
 					props_tmp = NULL;
 					goto end;
-				} else if (!props_tmp->exists[DMA_SUBBLOCK_INDEX]) {
-					SDE_ERROR("dgm sub-block index must be defined");
-					goto end;
 				}
 
-				i = PROP_VALUE_ACCESS(props_tmp->values, DMA_SUBBLOCK_INDEX, 0);
+				/*
+				 * The lahaina 5.4 DT has no cell-index in its
+				 * dgm@N nodes; 5.4 took them in order.
+				 */
+				if (props_tmp->exists[DMA_SUBBLOCK_INDEX])
+					i = PROP_VALUE_ACCESS(props_tmp->values,
+							DMA_SUBBLOCK_INDEX, 0);
+				else
+					i = dgm_order;
+				dgm_order++;
+
 				if (i >= SSPP_SUBBLK_COUNT_MAX) {
 					SDE_ERROR("dgm sub-block index greater than max: %d", i);
 					goto end;
