@@ -45,3 +45,12 @@ config DRM_PANEL_NOTIFICATIONS
 
 config BOARD_USES_DOUBLE_TAP_CTRL
 	bool "Board uses Double Tap Control"
+
+config DRM_PANEL_EVENT_NOTIFICATIONS
+	bool "Moto panel notifications through the QTI panel event notifier"
+	depends on INPUT_TOUCHSCREEN_MMI && QCOM_PANEL_EVENT_NOTIFIER
+	default n
+	help
+	 Say Y here to get the panel blank/unblank events from the 6.1
+	 panel_event_notifier (the display driver triggers it) instead of
+	 the 5.4 drm_panel notifier.
