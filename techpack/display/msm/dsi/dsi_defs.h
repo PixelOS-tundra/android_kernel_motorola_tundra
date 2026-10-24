@@ -300,6 +300,12 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_QSYNC_ON,
 	DSI_CMD_SET_QSYNC_OFF,
 	DSI_CMD_SET_CALIBRATION_DATA,
+	/* Motorola panel commands, parsed from the panel node */
+	DSI_CMD_SET_HBM_FOD_ON,
+	DSI_CMD_SET_HBM_ON,
+	DSI_CMD_SET_HBM_OFF,
+	DSI_CMD_SET_DC_ON,
+	DSI_CMD_SET_DC_OFF,
 	DSI_CMD_SET_MAX
 };
 

@@ -139,6 +139,8 @@ struct dsi_backlight_config {
 	bool bl_inverted_dbv;
 	bool bl_remap;
 	u32 brightness_default_level;
+	/* level last sent to the panel, also while HBM/FOD HBM holds it */
+	u32 real_bl_level;
 	/* digital dimming backlight LUT */
 	struct drm_msm_dimming_bl_lut *dimming_bl_lut;
 	u32 dimming_min_bl;
@@ -239,6 +241,19 @@ struct dsi_panel_calib_data {
 	size_t len;
 };
 
+struct dsi_panel_lhbm_config {
+	bool enable;
+	u32 alpha_reg;
+	u32 alpha_size;
+	u32 *alpha;
+};
+
+#define BRIGHTNESS_ALPHA_PAIR_LEN 2
+struct brightness_alpha_pair {
+	u16 brightness;
+	u8 alpha;
+};
+
 struct dsi_panel {
 	const char *name;
 	const char *type;
@@ -273,6 +288,7 @@ struct dsi_panel {
 	struct dsi_pinctrl_info pinctrl;
 	struct drm_panel_hdr_properties hdr_props;
 	struct drm_panel_esd_config esd_config;
+	struct dsi_panel_lhbm_config lhbm_config;
 
 	struct dsi_parser_utils utils;
 
@@ -303,6 +319,13 @@ struct dsi_panel {
 	enum dsi_panel_physical_type panel_type;
 
 	struct dsi_panel_ops panel_ops;
+
+	bool hbm_state;
+	bool fod_hbm_enabled;
+	bool fod_ui;
+	struct brightness_alpha_pair *fod_dim_lut;
+	unsigned int fod_dim_lut_len;
+	u8 fod_dim_alpha;
 	struct dsi_panel_calib_data calib_data;
 	struct dsi_panel_i2c_config i2c_config;
 };
@@ -379,6 +402,11 @@ int dsi_panel_prepare(struct dsi_panel *panel);
 int dsi_panel_enable(struct dsi_panel *panel);
 
 int dsi_panel_post_enable(struct dsi_panel *panel);
+
+int dsi_panel_set_fod_hbm(struct dsi_panel *panel, bool status);
+bool dsi_panel_get_fod_ui(struct dsi_panel *panel);
+void dsi_panel_set_fod_ui(struct dsi_panel *panel, bool status);
+u8 dsi_panel_get_fod_dim_alpha(struct dsi_panel *panel);
 
 int dsi_panel_pre_disable(struct dsi_panel *panel);
 
