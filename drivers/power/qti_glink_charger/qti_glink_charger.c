@@ -2951,10 +2951,14 @@ err:
 static int mmi_get_bootarg(char *key, char **value)
 {
 #ifdef CONFIG_BOOT_CONFIG
-	return mmi_get_bootarg_dt(key, value, "mmi,bootconfig", "\n");
-#else
-	return mmi_get_bootarg_dt(key, value, "bootargs", " ");
+	/*
+	 * Bootloaders of Android 11 devices (tundra) have no mmi,bootconfig
+	 * and keep androidboot.* in the kernel command line.
+	 */
+	if (!mmi_get_bootarg_dt(key, value, "mmi,bootconfig", "\n"))
+		return 0;
 #endif
+	return mmi_get_bootarg_dt(key, value, "bootargs", " ");
 }
 
 static int mmi_get_sku_type(struct qti_charger *chg, u8 *sku_type)
