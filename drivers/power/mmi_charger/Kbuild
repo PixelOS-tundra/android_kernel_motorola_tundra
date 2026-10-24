@@ -1,0 +1,9 @@
+ifeq ($(TARGET_BUILD_VARIANT),userdebug)
+	ccflags-y += -DMMI_GKI_API_ALLOWANCE
+endif
+
+ifneq ($(filter m y,$(CONFIG_MMI_RECHARGER_HAWAO_MODE)),)
+	ccflags-y += -DCONFIG_MMI_RECHARGER_HAWAO_MODE
+endif
+
+obj-$(CONFIG_USE_MMI_CHARGER) += mmi_charger.o

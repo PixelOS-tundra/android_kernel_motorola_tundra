@@ -1,0 +1,10 @@
+ifneq ($(filter m y,$(CONFIG_USE_MMI_CHARGER)),)
+	ccflags-y += -DUSE_MMI_CHARGER
+	ccflags-y += -I$(srctree)/$(src)/../mmi_charger
+endif
+
+ifneq ($(filter m y, $(CONFIG_ADAPTIVE_TOLERANCE_OPTIMIZATION)),)
+	ccflags-y += -DADAPTIVE_TOLERANCE_OPTIMIZATION
+endif
+
+obj-$(CONFIG_QPNP_ADAPTIVE_CHARGE) += qpnp_adaptive_charge.o
