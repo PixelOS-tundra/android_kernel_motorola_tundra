@@ -309,6 +309,9 @@ static int __init gserial_init(void)
 	}
 	strings_dev[STRING_DESCRIPTION_IDX].s = serial_config_driver.label;
 
+	/* DEBUG (k61 bring-up): bind only for the k61.usbcon console */
+	if (!k61_usbcon)
+		enable = false;
 	if (!enable)
 		return 0;
 

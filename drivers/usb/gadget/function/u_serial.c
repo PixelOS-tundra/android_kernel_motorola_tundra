@@ -1025,9 +1025,12 @@ static void gs_console_disconnect(struct gs_port *port)
 
 /*
  * DEBUG (k61 bring-up): "k61.usbcon" enables the ttyGS0 console without a
- * console= argument, which ABL rewrites to console=null.
+ * console= argument, which ABL rewrites to console=null. Without it,
+ * g_serial does not bind, so the UDC stays free for the configfs gadget
+ * (adb).
  */
-static bool k61_usbcon;
+bool k61_usbcon;
+EXPORT_SYMBOL_GPL(k61_usbcon);
 
 static int __init k61_usbcon_setup(char *str)
 {

@@ -71,4 +71,7 @@ void gserial_disconnect(struct gserial *);
 void gserial_suspend(struct gserial *p);
 void gserial_resume(struct gserial *p);
 
+/* DEBUG (k61 bring-up): set by "k61.usbcon" */
+extern bool k61_usbcon;
+
 #endif /* __U_SERIAL_H */
