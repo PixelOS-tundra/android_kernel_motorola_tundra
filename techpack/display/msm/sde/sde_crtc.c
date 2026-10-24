@@ -977,18 +977,12 @@ static int _sde_crtc_set_roi_v1(struct drm_crtc_state *state,
 		return -EINVAL;
 	}
 
-	cstate->user_roi_list.roi_feature_flags = roi_v1.roi_feature_flags;
+	/* the 5.4 UAPI has no separate SPR ROI: it is always the ROI */
+	cstate->user_roi_list.roi_feature_flags = 0;
 	cstate->user_roi_list.num_rects = roi_v1.num_rects;
 	for (i = 0; i < roi_v1.num_rects; ++i) {
 		cstate->user_roi_list.roi[i] = roi_v1.roi[i];
-		if (cstate->user_roi_list.roi_feature_flags & SDE_DRM_ROI_SPR_FLAG_EN)
-			cstate->user_roi_list.spr_roi[i] = roi_v1.spr_roi[i];
-		else
-			/*
-			 * backward compatible, spr_roi has the same value with roi,
-			 * it will have the same behavior with before.
-			 */
-			cstate->user_roi_list.spr_roi[i] = roi_v1.roi[i];
+		cstate->user_roi_list.spr_roi[i] = roi_v1.roi[i];
 		SDE_DEBUG("crtc%d: roi%d: roi (%d,%d) (%d,%d)\n",
 				DRMID(crtc), i,
 				cstate->user_roi_list.roi[i].x1,
@@ -1000,17 +994,6 @@ static int _sde_crtc_set_roi_v1(struct drm_crtc_state *state,
 				cstate->user_roi_list.roi[i].y1,
 				cstate->user_roi_list.roi[i].x2,
 				cstate->user_roi_list.roi[i].y2);
-		SDE_DEBUG("crtc%d, roi_feature_flags %d: spr roi%d: spr roi (%d,%d) (%d,%d)\n",
-				DRMID(crtc), roi_v1.roi_feature_flags, i,
-				roi_v1.spr_roi[i].x1,
-				roi_v1.spr_roi[i].y1,
-				roi_v1.spr_roi[i].x2,
-				roi_v1.spr_roi[i].y2);
-		SDE_EVT32_VERBOSE(DRMID(crtc), roi_v1.roi_feature_flags,
-				roi_v1.spr_roi[i].x1,
-				roi_v1.spr_roi[i].y1,
-				roi_v1.spr_roi[i].x2,
-				roi_v1.spr_roi[i].y2);
 	}
 
 	return 0;

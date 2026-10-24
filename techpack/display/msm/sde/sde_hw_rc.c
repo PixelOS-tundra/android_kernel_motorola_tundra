@@ -38,7 +38,7 @@ static int _sde_hw_rc_program_enable_bits(
 {
 	int rc = 0;
 	u32 val = 0, param_c = 0, rc_merge_mode = 0, ystart = 0;
-	u64 flags = 0, mask_w = 0, mask_h = 0;
+	u64 flags = 0;
 	bool r1_valid = false, r2_valid = false;
 	bool pu_in_r1 = false, pu_in_r2 = false;
 	bool r1_enable = false, r2_enable = false;
@@ -56,8 +56,6 @@ static int _sde_hw_rc_program_enable_bits(
 	}
 
 	flags = rc_mask_cfg->flags;
-	mask_w = rc_mask_cfg->width;
-	mask_h = rc_mask_cfg->height;
 	r1_valid = ((flags & SDE_HW_RC_DISABLE_R1) != SDE_HW_RC_DISABLE_R1);
 	r2_valid = ((flags & SDE_HW_RC_DISABLE_R2) != SDE_HW_RC_DISABLE_R2);
 	pu_in_r1 = (param_r == RC_PARAM_R1 || param_r == RC_PARAM_R1R2);
@@ -75,10 +73,10 @@ static int _sde_hw_rc_program_enable_bits(
 	if (!r1_enable && r2_enable)
 		ystart = rc_roi->y;
 
-	SDE_DEBUG("idx:%d w:%d h:%d flags:%x, R1:%d, R2:%d, PU R1:%d, PU R2:%d, Y_START:%d\n",
-			RC_IDX(hw_dspp), mask_w, mask_h, flags, r1_valid, r2_valid, pu_in_r1,
+	SDE_DEBUG("idx:%d flags:%x, R1:%d, R2:%d, PU R1:%d, PU R2:%d, Y_START:%d\n",
+			RC_IDX(hw_dspp), flags, r1_valid, r2_valid, pu_in_r1,
 			pu_in_r2, ystart);
-	SDE_EVT32(RC_IDX(hw_dspp), mask_w, mask_h, flags, r1_valid, r2_valid, pu_in_r1, pu_in_r2,
+	SDE_EVT32(RC_IDX(hw_dspp), flags, r1_valid, r2_valid, pu_in_r1, pu_in_r2,
 			ystart);
 
 	val |= param_c;
@@ -212,8 +210,9 @@ static int sde_hw_rc_check_mask_cfg(
 	cfg_param_06 = rc_mask_cfg->cfg_param_06;
 	cfg_param_07 = rc_mask_cfg->cfg_param_07;
 	cfg_param_08 = rc_mask_cfg->cfg_param_08;
-	mask_width = rc_mask_cfg->width;
-	mask_height = rc_mask_cfg->height;
+	/* the 5.4 UAPI mask has no size: it always covers the panel */
+	mask_width = hw_cfg->panel_width;
+	mask_height = hw_cfg->panel_height;
 	r1_enable = ((flags & SDE_HW_RC_DISABLE_R1) != SDE_HW_RC_DISABLE_R1);
 	r2_enable = ((flags & SDE_HW_RC_DISABLE_R2) != SDE_HW_RC_DISABLE_R2);
 
@@ -557,8 +556,8 @@ int sde_hw_rc_setup_mask(struct sde_hw_dspp *hw_dspp, void *cfg)
 	rc_mask_cfg = hw_cfg->payload;
 	last_roi_list = hw_dspp->rc_state.last_roi_list;
 
-	mask_w = rc_mask_cfg->width;
-	mask_h = rc_mask_cfg->height;
+	mask_w = hw_cfg->panel_width;
+	mask_h = hw_cfg->panel_height;
 	panel_w =  hw_cfg->panel_width;
 	panel_h = hw_cfg->panel_height;
 

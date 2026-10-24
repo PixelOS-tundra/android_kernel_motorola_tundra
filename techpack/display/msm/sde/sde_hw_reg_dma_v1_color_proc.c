@@ -318,7 +318,7 @@ static int _reg_dmav1_rc_program_enable_bits(
 {
 	int rc = 0;
 	u32 val = 0, param_c = 0, rc_merge_mode = 0, ystart = 0;
-	u64 flags = 0, mask_w = 0, mask_h = 0;
+	u64 flags = 0;
 	bool r1_valid = false, r2_valid = false;
 	bool pu_in_r1 = false, pu_in_r2 = false;
 	bool r1_enable = false, r2_enable = false;
@@ -336,8 +336,6 @@ static int _reg_dmav1_rc_program_enable_bits(
 	}
 
 	flags = rc_mask_cfg->flags;
-	mask_w = rc_mask_cfg->width;
-	mask_h = rc_mask_cfg->height;
 	r1_valid = ((flags & SDE_HW_RC_DISABLE_R1) != SDE_HW_RC_DISABLE_R1);
 	r2_valid = ((flags & SDE_HW_RC_DISABLE_R2) != SDE_HW_RC_DISABLE_R2);
 	pu_in_r1 = (param_r == RC_PARAM_R1 || param_r == RC_PARAM_R1R2);
@@ -355,10 +353,10 @@ static int _reg_dmav1_rc_program_enable_bits(
 	if (!r1_enable && r2_enable)
 		ystart = rc_roi->y;
 
-	SDE_DEBUG("idx:%d w:%d h:%d flags:%x, R1:%d, R2:%d, PU R1:%d, PU R2:%d, Y_START:%d\n",
-		RC_IDX(hw_dspp), mask_w, mask_h, flags, r1_valid, r2_valid, pu_in_r1,
+	SDE_DEBUG("idx:%d flags:%x, R1:%d, R2:%d, PU R1:%d, PU R2:%d, Y_START:%d\n",
+		RC_IDX(hw_dspp), flags, r1_valid, r2_valid, pu_in_r1,
 		pu_in_r2, ystart);
-	SDE_EVT32(RC_IDX(hw_dspp), mask_w, mask_h, flags, r1_valid, r2_valid, pu_in_r1, pu_in_r2,
+	SDE_EVT32(RC_IDX(hw_dspp), flags, r1_valid, r2_valid, pu_in_r1, pu_in_r2,
 		ystart);
 
 	val |= param_c;
@@ -1535,8 +1533,9 @@ int reg_dmav1_setup_rc_mask_configv1(struct sde_hw_dspp *ctx, void *cfg)
 	rc_mask_cfg = hw_cfg->payload;
 	last_roi_list = ctx->rc_state.last_roi_list;
 
-	mask_w = rc_mask_cfg->width;
-	mask_h = rc_mask_cfg->height;
+	/* the 5.4 UAPI mask has no size: it always covers the panel */
+	mask_w = hw_cfg->panel_width;
+	mask_h = hw_cfg->panel_height;
 	panel_w =  hw_cfg->panel_width;
 	panel_h = hw_cfg->panel_height;
 
@@ -2188,6 +2187,8 @@ void reg_dmav2_setup_dspp_sixzonev2(struct sde_hw_dspp *ctx, void *cfg)
 	struct sde_hw_dspp *dspp_list[DSPP_MAX];
 	u32 local_opcode = 0, local_hold = 0, sv_ctl = 0;
 	u32 num_of_mixers, blk = 0, len, transfer_size_bytes;
+	/* the 5.4 UAPI sixzone payload has no saturation curves */
+	u32 sat_adjust_p0 = 0, sat_adjust_p1 = 0;
 	u16 *data = NULL;
 	int i, rc, j, k;
 
@@ -2232,8 +2233,8 @@ void reg_dmav2_setup_dspp_sixzonev2(struct sde_hw_dspp *ctx, void *cfg)
 		*/
 		data[k++] = (u16) (sixzone->curve[j].p0 << 4);
 		data[k++] = (u16) ((sixzone->curve[j].p1 >> 16) << 4);
-		data[k++] = (u16) (sixzone->curve_p2[j] << 4);
-		data[k++] = (u16) ((sixzone->curve_p2[j] >> 16) << 4);
+		data[k++] = 0;
+		data[k++] = 0;
 		data[k++] = (u16) (sixzone->curve[j].p1 << 4);
 	}
 
@@ -2283,7 +2284,7 @@ void reg_dmav2_setup_dspp_sixzonev2(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_OPS(dma_write_cfg,
 		ctx->cap->sblk->sixzone.base + SIXZONE_SAT_PWL0_OFF,
-		&sixzone->sat_adjust_p0, sizeof(u32),
+		&sat_adjust_p0, sizeof(u32),
 		REG_SINGLE_WRITE, 0, 0, 0);
 	rc = dma_ops->setup_payload(&dma_write_cfg);
 	if (rc) {
@@ -2293,16 +2294,12 @@ void reg_dmav2_setup_dspp_sixzonev2(struct sde_hw_dspp *ctx, void *cfg)
 
 	REG_DMA_SETUP_OPS(dma_write_cfg,
 		ctx->cap->sblk->sixzone.base + SIXZONE_SAT_PWL1_OFF,
-		&sixzone->sat_adjust_p1, sizeof(u32),
+		&sat_adjust_p1, sizeof(u32),
 		REG_SINGLE_WRITE, 0, 0, 0);
 	rc = dma_ops->setup_payload(&dma_write_cfg);
 	if (rc) {
 		DRM_ERROR("write sixzone saturation adjust p1 failed ret %d\n", rc);
 		goto exit;
-	}
-
-	if (sixzone->flags & SIXZONE_SV_ENABLE) {
-		sv_ctl |= PA_SIXZONE_SV_EN;
 	}
 
 	REG_DMA_SETUP_OPS(dma_write_cfg,
@@ -5376,20 +5373,23 @@ int reg_dmav1_setup_spr_cfg5_params(struct sde_hw_dspp *ctx,
 {
 	uint32_t i, reg[1];
 	int rc = 0;
+	/* the 5.4 UAPI has no cfg18 */
+	const __u16 cfg18_en = 0;
+	const __u8 cfg18[7] = { 0 };
 
-	if (!payload->cfg18_en) {
+	if (!cfg18_en) {
 		ctx->spr_cfg_18_default = 0;
 		return rc;
 	}
 
-	reg[0] = APPLY_MASK_AND_SHIFT(payload->cfg18[0], 3, 16) |
-		 APPLY_MASK_AND_SHIFT(payload->cfg18[1], 3, 20) |
-		 APPLY_MASK_AND_SHIFT(payload->cfg18[2], 3, 24);
+	reg[0] = APPLY_MASK_AND_SHIFT(cfg18[0], 3, 16) |
+		 APPLY_MASK_AND_SHIFT(cfg18[1], 3, 20) |
+		 APPLY_MASK_AND_SHIFT(cfg18[2], 3, 24);
 
 	for (i = 0; i < 4; i++) {
 		uint32_t val = 0;
 
-		switch (payload->cfg18[3 + i]) {
+		switch (cfg18[3 + i]) {
 		case 0:
 			val = 0;
 			break;
@@ -5400,7 +5400,7 @@ int reg_dmav1_setup_spr_cfg5_params(struct sde_hw_dspp *ctx,
 			val = 2;
 			break;
 		default:
-			DRM_ERROR("Invalid payload for cfg18. Val %u\n", payload->cfg18[3 + i]);
+			DRM_ERROR("Invalid payload for cfg18. Val %u\n", cfg18[3 + i]);
 			break;
 		}
 
@@ -5575,7 +5575,6 @@ int reg_dmav1_setup_spr_init_kickoff(uint32_t version, uint32_t base_off,
 		reg[0] |= APPLY_MASK_AND_SHIFT(payload->cfg11[3], 1, 14);
 
 		if (version == 2) {
-			reg[0] |= payload->cfg18_en ? (1 << 26) : 0;
 			reg[0] |= payload->cfg7 & 0x4 ? (1 << 15) : 0;
 		}
 	}
@@ -6247,10 +6246,8 @@ static int __reg_dmav1_setup_demurav1_cfg0(struct sde_hw_dspp *ctx,
 			goto quit;
 	}
 
-	if (!(dcfg->flags & DEMURA_SKIP_CFG0_PARAM2))
-		dcfg->cfg0_param2_idx = 0;
-
-	codebook_offset = __get_offset_idx(dcfg->cfg0_param2_idx, dcfg->c0_depth);
+	/* the 5.4 UAPI always loads cfg0_param2 at index 0 */
+	codebook_offset = __get_offset_idx(0, dcfg->c0_depth);
 
 	REG_DMA_SETUP_OPS(*dma_write_cfg, demura_base + 0x70,
 		&codebook_offset, sizeof(codebook_offset), REG_SINGLE_WRITE, 0, 0, 0);
