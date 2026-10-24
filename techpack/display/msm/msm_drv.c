@@ -2097,6 +2097,17 @@ static int add_display_components(struct device *dev,
 			if (!node)
 				break;
 
+			/*
+			 * A connector whose driver isn't built never registers
+			 * its component and would hold off the whole bind.
+			 */
+			if (!IS_ENABLED(CONFIG_DRM_MSM_DP) &&
+					of_device_is_compatible(node, "qcom,dp-display")) {
+				DRM_INFO("DP not built, skipping %pOF\n", node);
+				of_node_put(node);
+				continue;
+			}
+
 			component_match_add(dev, matchptr, compare_of, node);
 		}
 
