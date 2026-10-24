@@ -25,10 +25,15 @@
 
 #define NUM_LOG_PAGES		10
 
+/* DEBUG (k61 bring-up): mirrored to printk with k61.glinklog */
+extern bool k61_glinklog;
 #define pmic_glink_dbg(pgdev, fmt, ...) \
 	do { \
 		ipc_log_string(pgdev->ipc_log, fmt, ##__VA_ARGS__); \
-		pr_debug(fmt, ##__VA_ARGS__); \
+		if (k61_glinklog) \
+			pr_info("pmic_glink: " fmt, ##__VA_ARGS__); \
+		else \
+			pr_debug(fmt, ##__VA_ARGS__); \
 	} while (0)
 
 /**

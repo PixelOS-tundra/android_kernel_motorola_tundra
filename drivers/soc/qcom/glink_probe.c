@@ -16,7 +16,14 @@
 #define GLINK_PROBE_LOG_PAGE_CNT 4
 static void *glink_ilc;
 
-#define GLINK_INFO(x, ...) ipc_log_string(glink_ilc, x, ##__VA_ARGS__)
+/* DEBUG (k61 bring-up): mirrored to printk with k61.glinklog */
+extern bool k61_glinklog;
+#define GLINK_INFO(x, ...)					\
+do {								\
+	ipc_log_string(glink_ilc, x, ##__VA_ARGS__);		\
+	if (k61_glinklog)					\
+		pr_info("glink_probe: " x, ##__VA_ARGS__);	\
+} while (0)
 
 #define GLINK_ERR(dev, x, ...)					       \
 do {								       \

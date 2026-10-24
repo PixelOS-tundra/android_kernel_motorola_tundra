@@ -30,14 +30,34 @@
 #include "qcom_glink_native.h"
 
 #define GLINK_LOG_PAGE_CNT 32
+/* DEBUG (k61 bring-up): k61.glinklog mirrors the glink IPC logs to printk */
+bool k61_glinklog;
+EXPORT_SYMBOL_GPL(k61_glinklog);
+
+static int __init k61_glinklog_setup(char *str)
+{
+	k61_glinklog = true;
+	return 1;
+}
+__setup("k61.glinklog", k61_glinklog_setup);
+
 #define GLINK_INFO(ctxt, x, ...)					  \
-	ipc_log_string(ctxt, "[%s]: "x, __func__, ##__VA_ARGS__)
+do {									  \
+	ipc_log_string(ctxt, "[%s]: "x, __func__, ##__VA_ARGS__);	  \
+	if (k61_glinklog)						  \
+		pr_info("glink: [%s]: "x, __func__, ##__VA_ARGS__);	  \
+} while (0)
 
 #define CH_INFO(ch, x, ...)						     \
 do {									     \
-	if (ch->glink)							     \
+	if (ch->glink) {						     \
 		ipc_log_string(ch->glink->ilc, "%s[%d:%d] %s: "x, ch->name,  \
 			       ch->lcid, ch->rcid, __func__, ##__VA_ARGS__); \
+		if (k61_glinklog)					     \
+			pr_info("glink: %s %s[%d:%d] %s: "x,		     \
+				ch->glink->name, ch->name, ch->lcid,	     \
+				ch->rcid, __func__, ##__VA_ARGS__);	     \
+	}								     \
 } while (0)
 
 #define CH_ERR(ch, x, ...)						     \
