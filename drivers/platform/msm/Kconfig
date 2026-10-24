@@ -32,4 +32,6 @@ config MSM_MHI_NET_DEV
 	  with the MHI device driver to send and receive data to/from a
 	  host.
 
+source "techpack/dataipa/Kconfig"
+
 endmenu
