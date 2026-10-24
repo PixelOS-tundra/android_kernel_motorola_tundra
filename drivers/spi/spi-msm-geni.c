@@ -3197,7 +3197,8 @@ static int geni_se_get_common_resources(struct platform_device *pdev,
 	u32 geni_to_core;
 	u32 cpu_to_geni;
 	u32 geni_to_ddr;
-	struct device_node *wrapper_node = pdev->dev.parent->of_node;
+	struct device *wrapper_dev = geni_se_wrapper_dev(&pdev->dev);
+	struct device_node *wrapper_node = wrapper_dev ? wrapper_dev->of_node : NULL;
 
 	if (!wrapper_node) {
 		dev_err(&pdev->dev, "Parent wrapper device node not found\n");
@@ -3343,14 +3344,19 @@ static int geni_spi_resources_init(struct platform_device *pdev, struct spi_geni
 		return ret;
 	}
 
-	geni_mas->m_ahb_clk = devm_clk_get(dev->parent, "m-ahb");
+	/* 5.4 binding: the AHB clocks are on the serial engine node */
+	geni_mas->m_ahb_clk = devm_clk_get(geni_mas->wrapper_dev, "m-ahb");
+	if (PTR_ERR_OR_ZERO(geni_mas->m_ahb_clk) == -ENOENT)
+		geni_mas->m_ahb_clk = devm_clk_get(dev, "m-ahb");
 	if (IS_ERR(geni_mas->m_ahb_clk)) {
 		ret = PTR_ERR(geni_mas->m_ahb_clk);
 		dev_err(&pdev->dev, "Err getting M AHB clk %d\n", ret);
 		return ret;
 	}
 
-	geni_mas->s_ahb_clk = devm_clk_get(dev->parent, "s-ahb");
+	geni_mas->s_ahb_clk = devm_clk_get(geni_mas->wrapper_dev, "s-ahb");
+	if (PTR_ERR_OR_ZERO(geni_mas->s_ahb_clk) == -ENOENT)
+		geni_mas->s_ahb_clk = devm_clk_get(dev, "s-ahb");
 	if (IS_ERR(geni_mas->s_ahb_clk)) {
 		ret = PTR_ERR(geni_mas->s_ahb_clk);
 		dev_err(&pdev->dev, "Err getting S AHB clk %d\n", ret);
@@ -3412,7 +3418,9 @@ static int spi_geni_probe(struct platform_device *pdev)
 	geni_mas = spi_master_get_devdata(spi);
 	geni_mas->dev = dev;
 	geni_mas->spi_rsc.dev = dev;
-	geni_mas->spi_rsc.wrapper = dev_get_drvdata(dev->parent);
+	geni_mas->wrapper_dev = geni_se_wrapper_dev(dev);
+	geni_mas->spi_rsc.wrapper = geni_mas->wrapper_dev ?
+				    dev_get_drvdata(geni_mas->wrapper_dev) : NULL;
 	spi->dev.of_node = pdev->dev.of_node;
 
 	geni_mas->rsc.se_rsc = &geni_mas->spi_rsc;
@@ -3429,7 +3437,6 @@ static int spi_geni_probe(struct platform_device *pdev)
 	if (ret)
 		goto spi_geni_probe_err;
 
-	geni_mas->wrapper_dev = dev->parent;
 
 	/*
 	 * For LE, clocks, gpio and icb voting will be provided by
