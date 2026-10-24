@@ -1685,6 +1685,9 @@ static bool bringup_stop;
 bool k61_stop_init;
 bool k61_stop_exec;
 bool k61_stop_data_ro;
+bool k61_stop_data_rw;
+bool k61_stop_data_closed;
+static bool k61_stop_data_mounted;
 static unsigned int k61_stop_timeout_s;
 
 static void k61_stop_timeout(struct timer_list *t)
@@ -1711,7 +1714,9 @@ __setup("k61.stop", bringup_stop_setup);
 
 static int __init k61_stop_data_setup(char *str)
 {
-	if (strcmp(str, "ro"))
+	if (!strcmp(str, "rw"))
+		k61_stop_data_rw = true;
+	else if (strcmp(str, "ro"))
 		return 0;
 	k61_stop_data_ro = true;
 	return 1;
@@ -1800,7 +1805,9 @@ void k61_stop_data_probe(void)
 
 static void k61_stop_data_hold(struct timer_list *t)
 {
-	panic("k61.stop: %us after the /data mount", k61_stop_data_hold_s);
+	/* through a worker, which can sync first in k61.data=rw */
+	k61_stop_guard_trip_async("%us after the /data mount",
+				  k61_stop_data_hold_s);
 }
 static DEFINE_TIMER(k61_stop_data_timer, k61_stop_data_hold);
 
@@ -1821,6 +1828,7 @@ void k61_stop_block_mounted(const struct path *path, const char *source,
 		source ?: "(null)", mnt, fstype, err);
 	if (!err && !strcmp(mnt, "/data") &&
 	    !timer_pending(&k61_stop_data_timer)) {
+		WRITE_ONCE(k61_stop_data_mounted, true);
 		pr_info("k61.stop: /data mounted, stopping in %us\n",
 			k61_stop_data_hold_s);
 		mod_timer(&k61_stop_data_timer,
@@ -1841,6 +1849,38 @@ static int __init bringup_hold_setup(char *str)
 }
 __setup("k61.hold=", bringup_hold_setup);
 
+/*
+ * k61.data=rw: only the /data mount may be read-write, and only until the
+ * write window is closed by a trip.
+ */
+bool k61_stop_rw_mount_allowed(const struct path *path)
+{
+	char buf[64];
+	char *mnt;
+
+	if (!k61_stop_data_rw || READ_ONCE(k61_stop_data_closed))
+		return false;
+	mnt = d_path(path, buf, sizeof(buf));
+	return !IS_ERR(mnt) && !strcmp(mnt, "/data");
+}
+
+/*
+ * k61.data=rw: stop before apexd (which activates and may revert or delete
+ * the /data APEXes) and before zygote (whose PackageManager scan rewrites
+ * the package state), so 6.1 only writes what init and vold do while
+ * setting up /data.
+ */
+void k61_stop_exec_check(const char *filename)
+{
+	if (!k61_stop_data_rw || !READ_ONCE(k61_stop_data_mounted))
+		return;
+	if (!strcmp(filename, "/system/bin/apexd") ||
+	    !strncmp(filename, "/system/bin/app_process", 23))
+		k61_stop_guard_trip("stopping at the exec of %s by %s[%d]",
+				    filename, current->comm,
+				    task_pid_nr(current));
+}
+
 /* Called by the k61.stop=init/init2 guards; keeps running k61.hold seconds */
 void k61_stop_guard_trip(const char *fmt, ...)
 {
@@ -1852,6 +1892,18 @@ void k61_stop_guard_trip(const char *fmt, ...)
 	vaf.va = &args;
 	pr_emerg("k61.stop: %pV\n", &vaf);
 	va_end(args);
+
+	/*
+	 * k61.data=rw: write back what /data has so far (a consistent f2fs
+	 * checkpoint), then refuse all further userdata writes, so the hold
+	 * and the panic leave /data as if it had been synced and powered off.
+	 */
+	if (k61_stop_data_rw && !READ_ONCE(k61_stop_data_closed)) {
+		pr_emerg("k61.stop: syncing\n");
+		ksys_sync();
+		WRITE_ONCE(k61_stop_data_closed, true);
+		pr_emerg("k61.stop: sync done, userdata writes closed\n");
+	}
 
 	if (bringup_hold) {
 		pr_emerg("k61.stop: holding for %us\n", bringup_hold);

@@ -2729,7 +2729,8 @@ static int do_remount(struct path *path, int ms_flags, int sb_flags,
 	 * DEBUG (k61.stop=init): no writable block filesystem mounts; with
 	 * k61.data=ro they stay read-only instead
 	 */
-	if (k61_stop_init && sb->s_bdev && !(sb_flags & SB_RDONLY)) {
+	if (k61_stop_init && sb->s_bdev && !(sb_flags & SB_RDONLY) &&
+	    !k61_stop_rw_mount_allowed(path)) {
 		if (!k61_stop_data_ro)
 			k61_stop_guard_trip("refusing rw remount of %s",
 					    sb->s_id);
@@ -3065,7 +3066,7 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 	 * k61.data=ro they are mounted read-only instead
 	 */
 	if (k61_stop_init && (type->fs_flags & FS_REQUIRES_DEV) &&
-	    !(sb_flags & SB_RDONLY)) {
+	    !(sb_flags & SB_RDONLY) && !k61_stop_rw_mount_allowed(path)) {
 		if (!k61_stop_data_ro)
 			k61_stop_guard_trip("refusing rw mount of %s on %pd (%s)",
 					    name ?: "(null)", path->dentry,

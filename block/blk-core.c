@@ -531,6 +531,10 @@ static bool k61_stop_bio_refused(struct bio *bio)
 		  (const char *)bdev->bd_meta_info->volname : "";
 	if (!strcmp(volname, "ssd"))
 		return false;
+	/* k61.data=rw: /data (f2fs on dm-default-key) until a trip */
+	if (k61_stop_data_rw && !READ_ONCE(k61_stop_data_closed) &&
+	    !strcmp(volname, "userdata"))
+		return false;
 
 	pr_emerg_ratelimited("k61.stop: refusing %s bio to %pg (%s) sector %llu, %u sectors, by %s[%d]\n",
 			     blk_op_str(bio_op(bio)), bdev, volname,
