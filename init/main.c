@@ -1811,13 +1811,39 @@ static void k61_stop_data_hold(struct timer_list *t)
 }
 static DEFINE_TIMER(k61_stop_data_timer, k61_stop_data_hold);
 
+static struct super_block *k61_stop_data_sb;
+
+/*
+ * k61.data=rw (guard F): nothing on /data may be deleted or replaced, so
+ * every file that was there before the run is still there after it.
+ * Creating and writing files stays allowed. Called by vfs_unlink(),
+ * vfs_rmdir() and by vfs_rename() when it replaces or exchanges a target;
+ * @from is the rename source, if any. The log shows what the boot would
+ * have removed.
+ */
+int k61_stop_data_delete_check(const char *op, struct dentry *dentry,
+			       struct dentry *from)
+{
+	struct super_block *sb = READ_ONCE(k61_stop_data_sb);
+
+	if (!k61_stop_data_rw || !sb || dentry->d_sb != sb)
+		return 0;
+	if (from)
+		pr_info("k61.stop: denying %s of %pd2 (from %pd2) by %s[%d]\n",
+			op, dentry, from, current->comm, task_pid_nr(current));
+	else
+		pr_info("k61.stop: denying %s of %pd2 by %s[%d]\n", op, dentry,
+			current->comm, task_pid_nr(current));
+	return -EPERM;
+}
+
 /*
  * Called by do_new_mount() for every block filesystem mount under the
  * guards: logs the result and starts the k61.data_hold timer once /data is
  * mounted, so the run ends shortly after vold has installed its keys.
  */
-void k61_stop_block_mounted(const struct path *path, const char *source,
-			    const char *fstype, int err)
+void k61_stop_block_mounted(const struct path *path, struct super_block *sb,
+			    const char *source, const char *fstype, int err)
 {
 	char buf[64];
 	char *mnt = d_path(path, buf, sizeof(buf));
@@ -1828,6 +1854,7 @@ void k61_stop_block_mounted(const struct path *path, const char *source,
 		source ?: "(null)", mnt, fstype, err);
 	if (!err && !strcmp(mnt, "/data") &&
 	    !timer_pending(&k61_stop_data_timer)) {
+		WRITE_ONCE(k61_stop_data_sb, sb);
 		WRITE_ONCE(k61_stop_data_mounted, true);
 		pr_info("k61.stop: /data mounted, stopping in %us\n",
 			k61_stop_data_hold_s);

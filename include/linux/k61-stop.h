@@ -21,14 +21,17 @@
  * f2fs and dm-default-key only; userspace write opens stay denied, and
  * /metadata stays read-only). The run stops at the first exec of
  * app_process (zygote) after /data is mounted. Any trip then syncs, closes
- * the userdata write window and only then holds and panics.
+ * the userdata write window and only then holds and panics. Nothing on
+ * /data may be unlinked, removed or replaced by a rename (-EPERM, logged).
  */
 #ifndef _LINUX_K61_STOP_H
 #define _LINUX_K61_STOP_H
 
 #include <linux/types.h>
 
+struct dentry;
 struct path;
+struct super_block;
 
 extern bool k61_stop_init;
 extern bool k61_stop_exec;
@@ -38,8 +41,10 @@ extern bool k61_stop_data_closed;
 
 __printf(1, 2) __noreturn void k61_stop_guard_trip(const char *fmt, ...);
 __printf(1, 2) void k61_stop_guard_trip_async(const char *fmt, ...);
-void k61_stop_block_mounted(const struct path *path, const char *source,
-			    const char *fstype, int err);
+void k61_stop_block_mounted(const struct path *path, struct super_block *sb,
+			    const char *source, const char *fstype, int err);
+int k61_stop_data_delete_check(const char *op, struct dentry *dentry,
+			       struct dentry *from);
 void k61_stop_data_probe(void);
 bool k61_stop_rw_mount_allowed(const struct path *path);
 void k61_stop_exec_check(const char *filename);

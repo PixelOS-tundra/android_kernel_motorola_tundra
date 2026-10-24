@@ -41,6 +41,8 @@
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
 
+#include <linux/k61-stop.h>
+
 #include "internal.h"
 #include "mount.h"
 
@@ -4180,6 +4182,13 @@ int vfs_rmdir(struct user_namespace *mnt_userns, struct inode *dir,
 	if (error)
 		return error;
 
+	/* DEBUG (k61.data=rw): no deletes on /data */
+	if (k61_stop_data_rw) {
+		error = k61_stop_data_delete_check("rmdir", dentry, NULL);
+		if (error)
+			return error;
+	}
+
 	if (!dir->i_op->rmdir)
 		return -EPERM;
 
@@ -4311,6 +4320,13 @@ int vfs_unlink(struct user_namespace *mnt_userns, struct inode *dir,
 
 	if (error)
 		return error;
+
+	/* DEBUG (k61.data=rw): no deletes on /data */
+	if (k61_stop_data_rw) {
+		error = k61_stop_data_delete_check("unlink", dentry, NULL);
+		if (error)
+			return error;
+	}
 
 	if (!dir->i_op->unlink)
 		return -EPERM;
@@ -4794,6 +4810,15 @@ int vfs_rename(struct renamedata *rd)
 	}
 	if (error)
 		return error;
+
+	/* DEBUG (k61.data=rw): no replacing renames on /data */
+	if (k61_stop_data_rw && (target || (flags & RENAME_EXCHANGE))) {
+		error = k61_stop_data_delete_check(flags & RENAME_EXCHANGE ?
+						   "exchange" : "rename over",
+						   new_dentry, old_dentry);
+		if (error)
+			return error;
+	}
 
 	if (!old_dir->i_op->rename)
 		return -EPERM;
