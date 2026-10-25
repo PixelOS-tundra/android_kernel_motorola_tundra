@@ -523,6 +523,11 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 		if (!strcmp(volname, "ssd")) {
 			pr_info("k61.stop: allowing write open of %pg (ssd) by %s[%d]\n",
 				bdev, current->comm, task_pid_nr(current));
+		} else if (k61_stop_efs_volume(volname, false) &&
+			   !strcmp(current->comm, "rmt_storage")) {
+			pr_info("k61.stop: allowing write open of %pg (%s, modem EFS) by %s[%d]\n",
+				bdev, volname, current->comm,
+				task_pid_nr(current));
 		} else if (k61_stop_ckpt_whole_disk(bdev)) {
 			pr_info("k61.stop: allowing write open of %pg (whole LUN, writes stop the run) by %s[%d]\n",
 				bdev, current->comm, task_pid_nr(current));

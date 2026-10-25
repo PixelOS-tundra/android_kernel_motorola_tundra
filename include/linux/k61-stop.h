@@ -57,6 +57,7 @@ extern bool k61_stop_data_ro;
 extern bool k61_stop_data_rw;
 extern bool k61_stop_data_ckpt;
 extern bool k61_stop_data_closed;
+extern bool k61_stop_efs_rw;
 
 __printf(1, 2) __noreturn void k61_stop_guard_trip(const char *fmt, ...);
 __printf(1, 2) void k61_stop_guard_trip_async(const char *fmt, ...);
@@ -74,5 +75,6 @@ void k61_stop_ckpt_whole_disk_write(struct block_device *bdev);
 void k61_stop_ckpt_refuse_enable(const char *id);
 void k61_stop_ckpt_kmsg(const char *line, size_t len);
 bool f2fs_k61_checkpoint_disabled(struct super_block *sb);
+bool k61_stop_efs_volume(const char *volname, bool write);
 
 #endif

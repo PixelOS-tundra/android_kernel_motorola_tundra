@@ -1764,6 +1764,32 @@ static int __init k61_stop_guard_f_setup(char *str)
 }
 __setup("k61.guard_f=", k61_stop_guard_f_setup);
 
+/*
+ * "k61.efs_rw" lets rmt_storage open the modem EFS partitions (modemst1,
+ * modemst2, fsc, fsg_a/fsg_b) for writing and lets writes to modemst1, modemst2
+ * and fsc through the bio barrier, so the modem can run with its EFS.
+ * fsg (the golden copy) stays refused. These writes are not rolled back.
+ */
+bool k61_stop_efs_rw;
+
+static int __init k61_stop_efs_rw_setup(char *str)
+{
+	k61_stop_efs_rw = true;
+	return 1;
+}
+__setup("k61.efs_rw", k61_stop_efs_rw_setup);
+
+bool k61_stop_efs_volume(const char *volname, bool write)
+{
+	if (!k61_stop_efs_rw)
+		return false;
+	if (!strcmp(volname, "modemst1") || !strcmp(volname, "modemst2") ||
+	    !strcmp(volname, "fsc"))
+		return true;
+	/* fsg_a/fsg_b on A/B: open, never written */
+	return !write && !strncmp(volname, "fsg", 3);
+}
+
 static char k61_stop_probe_paths[256] =
 	"/data/misc/vold/user_keys/de/0/encrypted_key,"
 	"/data/misc/vold/user_keys/de/0/keymaster_key_blob,"

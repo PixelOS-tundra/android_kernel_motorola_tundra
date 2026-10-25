@@ -531,6 +531,14 @@ static bool k61_stop_bio_refused(struct bio *bio)
 		  (const char *)bdev->bd_meta_info->volname : "";
 	if (!strcmp(volname, "ssd"))
 		return false;
+	/* k61.efs_rw: the modem EFS (rmt_storage), not the golden fsg */
+	if (k61_stop_efs_volume(volname, true)) {
+		pr_info_ratelimited("k61.stop: EFS write to %pg (%s) sector %llu, %u sectors\n",
+				    bdev, volname,
+				    (unsigned long long)bio->bi_iter.bi_sector,
+				    bio_sectors(bio));
+		return false;
+	}
 	/* k61.data=rw: /data (f2fs on dm-default-key) until a trip */
 	if (k61_stop_data_rw && !READ_ONCE(k61_stop_data_closed) &&
 	    !strcmp(volname, "userdata"))
