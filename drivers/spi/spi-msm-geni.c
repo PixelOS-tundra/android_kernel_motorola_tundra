@@ -228,20 +228,18 @@ static atomic_t k61_spi_steps = ATOMIC_INIT(0);
  * and block reset registers, the wrapper's QUP_HW_VER, SE3 (the UART left
  * configured by the bootloader) and SE6's GENI_FW_REVISION_RO.
  */
-static void k61_spi_read_map(struct device *dev, void __iomem *se_base,
-			     const char *when)
+static void k61_spi_read_map(struct device *dev, void __iomem *se_base)
 {
 	static const u32 gcc_regs[] = {
 		0x17000, 0x17004, 0x17008, 0x1772c, 0x23000, 0x23008, 0x52008,
 	};
-	static int calls;
+	static bool done;
 	void __iomem *base;
 	int i;
 
-	if (calls >= 3 || !strstr(dev_name(dev), "998000"))
+	if (done || !strstr(dev_name(dev), "998000"))
 		return;
-	calls++;
-	dev_info(dev, "k61map: --- %s ---\n", when);
+	done = true;
 
 	base = ioremap(0x100000, 0x1f0000);
 	if (base) {
@@ -2251,7 +2249,6 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 	mas->is_xfer_in_progress = true;
 	k61_spi_step(mas->dev, "prepare_transfer_hardware setup=%d gsi=%d",
 		     mas->setup, mas->gsi_mode);
-	k61_spi_read_map(mas->dev, mas->base, "first transfer");
 
 	/* Client to respect system suspend */
 	if (!pm_runtime_enabled(mas->dev)) {
@@ -3908,12 +3905,11 @@ exit_rt_resume:
 		     __clk_is_enabled(geni_mas->m_ahb_clk),
 		     __clk_is_enabled(geni_mas->s_ahb_clk));
 
-	k61_spi_read_map(dev, geni_mas->base, "resume, before GENI_OUTPUT_CTRL");
+	k61_spi_read_map(dev, geni_mas->base);
 	geni_write_reg(0x7f, geni_mas->base, GENI_OUTPUT_CTRL);
 	k61_spi_step(dev, "runtime_resume: GENI_OUTPUT_CTRL written");
 	/* Added 10 us delay to settle the write of the register as per HW team recommendation */
 	udelay(10);
-	k61_spi_read_map(dev, geni_mas->base, "resume, after GENI_OUTPUT_CTRL");
 
 	/* SPI Geni setup will happen for SPI Master/Slave after deep sleep exit */
 	if (geni_mas->is_deep_sleep && !geni_mas->setup) {
