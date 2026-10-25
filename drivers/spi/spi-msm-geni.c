@@ -5,7 +5,6 @@
  */
 
 #include <linux/clk.h>
-#include <linux/clk-provider.h>
 #include <linux/delay.h>
 #include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
@@ -208,19 +207,6 @@ struct spi_geni_ssr {
 	bool is_ssr_down;
 	bool xfer_prepared;
 };
-
-/*
- * DEBUG (k61 bring-up): step trace of the first SPI accesses, flushed so
- * the last line in ramoops names the access that hangs the SoC.
- */
-static atomic_t k61_spi_steps = ATOMIC_INIT(0);
-#define k61_spi_step(dev, fmt, ...) do {				\
-	if (atomic_inc_return(&k61_spi_steps) <= 40) {			\
-		dev_info(dev, "k61spi: " fmt "\n", ##__VA_ARGS__);	\
-		mb();							\
-		mdelay(2);						\
-	}								\
-} while (0)
 
 struct spi_geni_master {
 	struct geni_se spi_rsc;
@@ -2042,11 +2028,9 @@ static int spi_geni_mas_setup(struct spi_master *spi)
 
 	mas->oversampling = 1;
 
-	k61_spi_step(mas->dev, "mas_setup: reading GENI_IF_DISABLE_RO");
 	mas->gsi_mode =
 		(geni_read_reg(mas->base, GENI_IF_DISABLE_RO) &
 					FIFO_IF_DISABLE);
-	k61_spi_step(mas->dev, "mas_setup: gsi_mode %d", mas->gsi_mode);
 
 	if (mas->gsi_mode && !mas->is_deep_sleep) {
 		mas->tx = dma_request_slave_channel(mas->dev, "tx");
@@ -2199,8 +2183,6 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 		return 0;
 	}
 	mas->is_xfer_in_progress = true;
-	k61_spi_step(mas->dev, "prepare_transfer_hardware setup=%d gsi=%d",
-		     mas->setup, mas->gsi_mode);
 
 	/* Client to respect system suspend */
 	if (!pm_runtime_enabled(mas->dev)) {
@@ -2228,7 +2210,6 @@ static int spi_geni_prepare_transfer_hardware(struct spi_master *spi)
 
 	if (!mas->setup || !mas->shared_ee) {
 		ret = pm_runtime_get_sync(mas->dev);
-		k61_spi_step(mas->dev, "pm_runtime_get_sync -> %d", ret);
 		if (ret < 0) {
 			dev_err(mas->dev,
 				"%s:pm_runtime_get_sync failed %d\n",
@@ -3843,7 +3824,6 @@ static int spi_geni_runtime_resume(struct device *dev)
 	}
 
 exit_rt_resume:
-	k61_spi_step(dev, "runtime_resume: icc enable");
 	ret = geni_icc_enable(&geni_mas->spi_rsc);
 	if (ret) {
 		SPI_LOG_DBG(geni_mas->ipc, false, geni_mas->dev,
@@ -3851,14 +3831,8 @@ exit_rt_resume:
 		return ret;
 	}
 	ret = geni_se_resources_on(&geni_mas->spi_rsc);
-	k61_spi_step(dev, "runtime_resume: resources_on -> %d, se %d (%lu Hz) m-ahb %d s-ahb %d",
-		     ret, __clk_is_enabled(geni_mas->spi_rsc.clk),
-		     clk_get_rate(geni_mas->spi_rsc.clk),
-		     __clk_is_enabled(geni_mas->m_ahb_clk),
-		     __clk_is_enabled(geni_mas->s_ahb_clk));
 
 	geni_write_reg(0x7f, geni_mas->base, GENI_OUTPUT_CTRL);
-	k61_spi_step(dev, "runtime_resume: GENI_OUTPUT_CTRL written");
 	/* Added 10 us delay to settle the write of the register as per HW team recommendation */
 	udelay(10);
 
