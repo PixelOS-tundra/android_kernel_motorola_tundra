@@ -43,6 +43,31 @@ struct dsp_loader {
 	bool booted;
 };
 
+/* DEBUG: k61.dsp_skip=<name>[,<name>...] ignores boot_<name>/boot writes */
+static char k61_dsp_skip[64];
+
+static int __init k61_dsp_skip_setup(char *s)
+{
+	strscpy(k61_dsp_skip, s, sizeof(k61_dsp_skip));
+	return 1;
+}
+__setup("k61.dsp_skip=", k61_dsp_skip_setup);
+
+static bool k61_dsp_skipped(const char *name)
+{
+	const char *p = k61_dsp_skip;
+	size_t len = strlen(name);
+
+	while (*p) {
+		if (!strncmp(p, name, len) && (p[len] == ',' || !p[len]))
+			return true;
+		p = strchrnul(p, ',');
+		if (*p)
+			p++;
+	}
+	return false;
+}
+
 static void dsp_loader_boot_work(struct work_struct *work)
 {
 	struct dsp_loader *ldr = container_of(work, struct dsp_loader,
@@ -73,7 +98,9 @@ static ssize_t boot_store(struct kobject *kobj, struct kobj_attribute *attr,
 	if (ret)
 		return ret;
 
-	if (boot == 1)
+	if (boot == 1 && k61_dsp_skipped(ldr->name))
+		dev_info(ldr->dev, "k61.dsp_skip: not booting %s\n", ldr->name);
+	else if (boot == 1)
 		schedule_work(&ldr->boot_work);
 	else
 		dev_info(ldr->dev, "ignoring boot_%s/boot %d\n", ldr->name,
