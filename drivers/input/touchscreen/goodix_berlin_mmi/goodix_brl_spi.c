@@ -193,11 +193,26 @@ static void goodix_pdev_release(struct device *dev)
 	kfree(goodix_pdev);
 }
 
+/* DEBUG (k61 bring-up): k61.notouch keeps the touch IC (and SE6) untouched */
+static bool k61_notouch;
+
+static int __init k61_notouch_setup(char *str)
+{
+	k61_notouch = true;
+	return 1;
+}
+__setup("k61.notouch", k61_notouch_setup);
+
 static int goodix_spi_probe(struct spi_device *spi)
 {
 	int ret = 0;
 
 	ts_info("goodix spi probe in");
+
+	if (k61_notouch) {
+		ts_info("k61.notouch: not probing");
+		return -ENODEV;
+	}
 
 	if (spi->dev.of_node && !mmi_device_is_available(spi->dev.of_node)) {
 		ts_err("%s mmi: device not supported\n", __func__);
