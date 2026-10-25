@@ -6472,6 +6472,8 @@ static void ipa_gsi_irq_tx_notify_cb(struct gsi_chan_xfer_notify *notify)
 				napi_schedule(&tx_pkt->sys->napi_tx);
 			}
 		} else if (ipa_net_initialized && sys->napi_tx_enable) {
+			/* ipa3_aux_napi_tx_complete() reaps only counted EOTs */
+			atomic_inc(&tx_pkt->sys->xmit_eot_cnt);
 			if(!atomic_cmpxchg(&tx_pkt->sys->in_napi_context, 0, 1))
 				napi_schedule(&tx_pkt->sys->napi_tx);
 		} else {
