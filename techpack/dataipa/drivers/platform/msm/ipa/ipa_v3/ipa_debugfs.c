@@ -109,16 +109,25 @@ const char *ipa3_event_name[IPA_EVENT_MAX_NUM] = {
 	__stringify(IPA_IPPT_SW_FLT_EVENT),
 	__stringify(IPA_MACSEC_ADD_EVENT),
 	__stringify(IPA_MACSEC_DEL_EVENT),
+	[IPA_DONE_RESTORE_EVENT] = __stringify(IPA_DONE_RESTORE_EVENT),
+	[IPA_SET_EXT_ROUTER_MODE_EVENT] =
+		__stringify(IPA_SET_EXT_ROUTER_MODE_EVENT),
+	[IPA_ENABLE_ETH_PDU_MODE_EVENT] =
+		__stringify(IPA_ENABLE_ETH_PDU_MODE_EVENT),
+	[IPA_IPOGRE_NOTIFY_EVENT] = __stringify(IPA_IPOGRE_NOTIFY_EVENT),
+	[IPA_WARNING_LIMIT_REACHED] = __stringify(IPA_WARNING_LIMIT_REACHED),
 };
 
-const char *ipa3_hdr_l2_type_name[] = {
+const char *ipa3_hdr_l2_type_name[IPA_HDR_L2_MAX] = {
 	__stringify(IPA_HDR_L2_NONE),
 	__stringify(IPA_HDR_L2_ETHERNET_II),
 	__stringify(IPA_HDR_L2_802_3),
 	__stringify(IPA_HDR_L2_802_1Q),
+	__stringify(IPA_HDR_L2_ETHERNET_II_AST),
+	__stringify(IPA_HDR_L2_802_1Q_AST),
 };
 
-const char *ipa3_hdr_proc_type_name[] = {
+const char *ipa3_hdr_proc_type_name[IPA_HDR_PROC_MAX] = {
 	__stringify(IPA_HDR_PROC_NONE),
 	__stringify(IPA_HDR_PROC_ETHII_TO_ETHII),
 	__stringify(IPA_HDR_PROC_ETHII_TO_802_3),
@@ -132,6 +141,11 @@ const char *ipa3_hdr_proc_type_name[] = {
 	__stringify(IPA_HDR_PROC_SET_DSCP),
 	__stringify(IPA_HDR_PROC_EoGRE_HEADER_ADD),
 	__stringify(IPA_HDR_PROC_EoGRE_HEADER_REMOVE),
+	__stringify(IPA_HDR_PROC_WWAN_TO_ETHII_EX),
+	__stringify(IPA_HDR_PROC_GRE_HEADER_ADD),
+	__stringify(IPA_HDR_PROC_GRE_HEADER_REMOVE),
+	__stringify(IPA_HDR_PROC_IPOGRE_HEADER_ADD),
+	__stringify(IPA_HDR_PROC_IPOGRE_HEADER_REMOVE),
 	__stringify(IPA_HDR_PROC_RTP_METADATA_STREAM0),
 	__stringify(IPA_HDR_PROC_RTP_METADATA_STREAM1),
 	__stringify(IPA_HDR_PROC_RTP_METADATA_STREAM2),

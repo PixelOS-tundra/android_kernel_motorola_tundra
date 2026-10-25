@@ -6913,7 +6913,7 @@ static struct ipa3_mem_partition ipa_5_5_mem_part = {
 	.end_ofst = 0x4fe8,
 };
 
-const char *ipa_clients_strings[IPA_CLIENT_MAX] = {
+const char *ipa_clients_strings[] = {
 	__stringify(IPA_CLIENT_HSIC1_PROD),
 	__stringify(IPA_CLIENT_HSIC1_CONS),
 	__stringify(IPA_CLIENT_HSIC2_PROD),
@@ -6930,7 +6930,7 @@ const char *ipa_clients_strings[IPA_CLIENT_MAX] = {
 	__stringify(IPA_CLIENT_WLAN2_CONS),
 	__stringify(IPA_CLIENT_WLAN3_PROD),
 	__stringify(IPA_CLIENT_WLAN3_CONS),
-	__stringify(RESERVED_PROD_16),
+	__stringify(IPA_CLIENT_WLAN2_PROD1),
 	__stringify(IPA_CLIENT_WLAN4_CONS),
 	__stringify(IPA_CLIENT_USB_PROD),
 	__stringify(IPA_CLIENT_USB_CONS),
@@ -6954,7 +6954,7 @@ const char *ipa_clients_strings[IPA_CLIENT_MAX] = {
 	__stringify(IPA_CLIENT_A5_LAN_WAN_CONS),
 	__stringify(IPA_CLIENT_ODU_PROD),
 	__stringify(IPA_CLIENT_ODU_EMB_CONS),
-	__stringify(RESERVED_PROD_40),
+	__stringify(IPA_CLIENT_WLAN3_PROD1),
 	__stringify(IPA_CLIENT_ODU_TETH_CONS),
 	__stringify(IPA_CLIENT_MHI_PROD),
 	__stringify(IPA_CLIENT_MHI_CONS),
@@ -7040,9 +7040,26 @@ const char *ipa_clients_strings[IPA_CLIENT_MAX] = {
 	__stringify(RESERVERD_CONS_123),
 	__stringify(RESERVERD_PROD_124),
 	__stringify(IPA_CLIENT_TPUT_CONS),
-	__stringify(RESERVERD_PROD_126),
+	__stringify(IPA_CLIENT_Q6_DL_NLO_ETH_DATA_PROD),
 	__stringify(IPA_CLIENT_APPS_LAN_COAL_CONS),
+	__stringify(IPA_CLIENT_APPS_WAN_ETH_PROD),
+	__stringify(RESERVERD_CONS_129),
+	__stringify(IPA_CLIENT_IPSEC_DECAP_PROD),
+	__stringify(IPA_CLIENT_IPSEC_DECAP_RECOVERABLE_ERR_CONS),
+	__stringify(IPA_CLIENT_IPSEC_ENCAP_PROD),
+	__stringify(IPA_CLIENT_IPSEC_DECAP_NON_RECOVERABLE_ERR_CONS),
+	__stringify(IPA_CLIENT_Q6_DL_NLO_DATA_XLAT_PROD),
+	__stringify(IPA_CLIENT_IPSEC_ENCAP_ERR_CONS),
+	__stringify(RESERVERD_PROD_136),
+	__stringify(IPA_CLIENT_UC_RTP1_CONS),
+	__stringify(RESERVERD_PROD_138),
+	__stringify(IPA_CLIENT_UC_RTP2_CONS),
+	__stringify(RESERVERD_PROD_140),
+	__stringify(IPA_CLIENT_UC_RTP3_CONS),
+	__stringify(RESERVERD_PROD_142),
+	__stringify(IPA_CLIENT_UC_RTP4_CONS),
 };
+static_assert(ARRAY_SIZE(ipa_clients_strings) == IPA_CLIENT_MAX);
 EXPORT_SYMBOL(ipa_clients_strings);
 
 static void _set_coalescing_disposition(
