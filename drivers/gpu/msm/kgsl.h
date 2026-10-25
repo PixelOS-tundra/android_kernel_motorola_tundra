@@ -20,6 +20,34 @@
 
 #define KGSL_L3_DEVICE "kgsl-l3"
 
+/*
+ * Copy a UAPI struct the way the 5.4 driver did (kgsl_copy_from_user()):
+ * take min(ksize, usize) bytes, zero the rest of the kernel struct and
+ * ignore any user bytes past it. copy_struct_from_user() rejects a larger
+ * user struct with non-zero bytes the kernel doesn't know (-E2BIG, which
+ * the callers report as -EFAULT), and the stock lahaina Adreno UMD passes
+ * such structs: its IOCTL_KGSL_GPU_COMMAND calls all failed with EFAULT.
+ */
+#define kgsl_copy_struct_from_user(dst, ksize, src, usize) ({		\
+	size_t __ksize = (ksize), __usize = (usize);			\
+									\
+	if (__usize > __ksize)						\
+		pr_info_once("kgsl: %s: %zu-byte user struct, kernel has %zu, ignoring the rest\n", \
+			     __func__, __usize, __ksize);		\
+	_kgsl_copy_struct_from_user(dst, __ksize, src, __usize);	\
+})
+
+static inline int _kgsl_copy_struct_from_user(void *dst, size_t ksize,
+		const void __user *src, size_t usize)
+{
+	size_t copy = min(ksize, usize);
+
+	if (copy < ksize)
+		memset(dst + copy, 0, ksize - copy);
+
+	return copy_from_user(dst, src, copy) ? -EFAULT : 0;
+}
+
 #if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
 #include <soc/qcom/boot_stats.h>
 #define KGSL_BOOT_MARKER(str)          place_marker("M - DRIVER " str)

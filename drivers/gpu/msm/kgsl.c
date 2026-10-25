@@ -2373,7 +2373,7 @@ long kgsl_ioctl_gpu_aux_command(struct kgsl_device_private *dev_priv,
 	 * Create a draw object for KGSL_GPU_AUX_COMMAND_BIND or
 	 * KGSL_GPU_AUX_COMMAND_TIMELINE.
 	 */
-	if (copy_struct_from_user(&generic, sizeof(generic),
+	if (kgsl_copy_struct_from_user(&generic, sizeof(generic),
 		cmdlist, param->cmdsize)) {
 		ret = -EFAULT;
 		goto err;
@@ -2724,7 +2724,7 @@ static long gpuobj_free_on_timestamp(struct kgsl_device_private *dev_priv,
 	struct kgsl_context *context;
 	long ret;
 
-	if (copy_struct_from_user(&event, sizeof(event),
+	if (kgsl_copy_struct_from_user(&event, sizeof(event),
 		u64_to_user_ptr(param->priv), param->len))
 		return -EFAULT;
 
@@ -2766,7 +2766,7 @@ static long gpuobj_free_on_fence(struct kgsl_device_private *dev_priv,
 	if (!kgsl_mem_entry_set_pend(entry))
 		return -EBUSY;
 
-	if (copy_struct_from_user(&event, sizeof(event),
+	if (kgsl_copy_struct_from_user(&event, sizeof(event),
 		u64_to_user_ptr(param->priv), param->len)) {
 		kgsl_mem_entry_unset_pend(entry);
 		return -EFAULT;
@@ -3116,7 +3116,7 @@ static long _gpuobj_map_dma_buf(struct kgsl_device *device,
 		entry->memdesc.priv |= KGSL_MEMDESC_SECURE;
 	}
 
-	if (copy_struct_from_user(&buf, sizeof(buf),
+	if (kgsl_copy_struct_from_user(&buf, sizeof(buf),
 		u64_to_user_ptr(param->priv), param->priv_len))
 		return -EFAULT;
 
@@ -3832,7 +3832,7 @@ long kgsl_ioctl_gpuobj_sync(struct kgsl_device_private *dev_priv,
 	ptr = u64_to_user_ptr(param->objs);
 
 	for (i = 0; i < param->count; i++) {
-		ret = copy_struct_from_user(&objs[i], sizeof(*objs), ptr,
+		ret = kgsl_copy_struct_from_user(&objs[i], sizeof(*objs), ptr,
 			param->obj_len);
 		if (ret)
 			goto out;
