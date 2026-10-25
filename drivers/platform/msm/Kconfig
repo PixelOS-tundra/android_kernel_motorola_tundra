@@ -33,5 +33,6 @@ config MSM_MHI_NET_DEV
 	  host.
 
 source "techpack/dataipa/Kconfig"
+source "techpack/datarmnet/Kconfig"
 
 endmenu

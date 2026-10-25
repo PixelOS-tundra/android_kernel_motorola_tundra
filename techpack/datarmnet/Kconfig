@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config QTI_DATARMNET_LAHAINA
+	bool "Qualcomm rmnet data core (techpack/datarmnet) for lahaina"
+	depends on QTI_DATAIPA_LAHAINA
+	select GRO_CELLS
+	help
+	  Build the Qualcomm rmnet core (rmnet_data netdevs, MAP
+	  de/aggregation, DFC/WDA flow control, the RMNET_CORE genl and the
+	  rmnet_ll low-latency channel over IPA) into the kernel, as 5.4 did,
+	  for netmgrd's mobile data setup on top of rmnet_ipa0. The upstream
+	  rmnet driver (CONFIG_RMNET) must stay off: both register the "rmnet"
+	  link kind.
