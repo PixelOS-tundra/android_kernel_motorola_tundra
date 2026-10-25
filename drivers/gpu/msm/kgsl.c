@@ -2297,6 +2297,14 @@ done:
 		while (i--)
 			kgsl_drawobj_destroy(drawobj[i]);
 
+	/* DEBUG (k61 bring-up): why stock-UMD submissions fail */
+	if (result && result != -EPROTO && result != -EAGAIN)
+		pr_err_ratelimited("k61kgsl: gpu_command %d: flags %#llx cmds %u/%u objs %u/%u syncs %u/%u by %s\n",
+				   result, param->flags, param->numcmds,
+				   param->cmdsize, param->numobjs,
+				   param->objsize, param->numsyncs,
+				   param->syncsize, current->comm);
+
 	kgsl_context_put(context);
 	return result;
 }
