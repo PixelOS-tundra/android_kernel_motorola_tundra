@@ -1999,10 +1999,12 @@ void k61_stop_ckpt_whole_disk_write(struct block_device *bdev)
  */
 void k61_stop_ckpt_kmsg(const char *line, size_t len)
 {
+	static bool seen;
+
 	if (!k61_stop_data_ckpt || !READ_ONCE(k61_stop_data_mounted))
 		return;
-	if (strnstr(line, "Boot completed", len) ||
-	    strnstr(line, "sys.boot_completed=1", len)) {
+	if ((strnstr(line, "Boot completed", len) ||
+	     strnstr(line, "sys.boot_completed=1", len)) && !xchg(&seen, true)) {
 		pr_emerg("k61.stop: sys.boot_completed=1 (init: %.*s)%s\n",
 			 (int)strcspn(line, "\n"), line,
 			 k61_stop_ckpt_booted ? "" : ", running on (k61.ckpt_stop=none)");
