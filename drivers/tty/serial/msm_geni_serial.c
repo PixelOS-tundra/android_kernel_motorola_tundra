@@ -5485,7 +5485,10 @@ static int msm_geni_serial_get_clk(struct platform_device *pdev,
 		return ret;
 	}
 
-	dev_port->serial_rsc.m_ahb_clk = devm_clk_get(dev->parent, "m-ahb");
+	/* 5.4 binding: the AHB clocks are on the serial engine node */
+	dev_port->serial_rsc.m_ahb_clk = devm_clk_get(dev_port->wrapper_dev, "m-ahb");
+	if (PTR_ERR_OR_ZERO(dev_port->serial_rsc.m_ahb_clk) == -ENOENT)
+		dev_port->serial_rsc.m_ahb_clk = devm_clk_get(dev, "m-ahb");
 	if (IS_ERR(dev_port->serial_rsc.m_ahb_clk)) {
 		ret = PTR_ERR(dev_port->serial_rsc.m_ahb_clk);
 		dev_err(&pdev->dev, "Err getting M AHB clk %d\n", ret);
@@ -5493,7 +5496,9 @@ static int msm_geni_serial_get_clk(struct platform_device *pdev,
 		return ret;
 	}
 
-	dev_port->serial_rsc.s_ahb_clk = devm_clk_get(dev->parent, "s-ahb");
+	dev_port->serial_rsc.s_ahb_clk = devm_clk_get(dev_port->wrapper_dev, "s-ahb");
+	if (PTR_ERR_OR_ZERO(dev_port->serial_rsc.s_ahb_clk) == -ENOENT)
+		dev_port->serial_rsc.s_ahb_clk = devm_clk_get(dev, "s-ahb");
 	if (IS_ERR(dev_port->serial_rsc.s_ahb_clk)) {
 		ret = PTR_ERR(dev_port->serial_rsc.s_ahb_clk);
 		dev_err(&pdev->dev, "Err getting S AHB clk %d\n", ret);
@@ -5541,12 +5546,17 @@ static int msm_geni_serial_read_dtsi(struct platform_device *pdev,
 	bool is_console = dev_port->is_console;
 	u32 wake_char = 0;
 
-	dev_port->wrapper_dev = pdev->dev.parent;
-	dev_port->serial_rsc.wrapper_dev = pdev->dev.parent;
+	/* The 5.4 binding links the wrapper with qcom,wrapper-core */
+	dev_port->wrapper_dev = geni_se_wrapper_dev(&pdev->dev);
+	if (!dev_port->wrapper_dev) {
+		dev_err(&pdev->dev, "SE Wrapper device not found, deferring probe\n");
+		return -EPROBE_DEFER;
+	}
+	dev_port->serial_rsc.wrapper_dev = dev_port->wrapper_dev;
 	dev_port->serial_rsc.ctrl_dev = &pdev->dev;
 
 	dev_port->se.dev = &pdev->dev;
-	dev_port->se.wrapper = dev_get_drvdata(pdev->dev.parent);
+	dev_port->se.wrapper = dev_get_drvdata(dev_port->wrapper_dev);
 	if (!dev_port->se.wrapper) {
 		dev_err(&pdev->dev, "SE Wrapper is NULL, deferring probe\n");
 		return -EPROBE_DEFER;
