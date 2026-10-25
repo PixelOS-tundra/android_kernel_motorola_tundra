@@ -38,19 +38,23 @@ static int __init ipa_late_init(void)
 		ipa3_wwan_cleanup();
 	}
 
+#ifdef CONFIG_RNDIS_IPA
 	rc = rndis_ipa_init_module();
 	if (rc) {
 		IPAERR("rndis_ipa_init_module failed: %d\n",
 			   rc);
 		rndis_ipa_cleanup_module();
 	}
+#endif
 
+#ifdef CONFIG_NCM_IPA
 	rc = ncm_ipa_init_module();
 	if (rc) {
 		IPAERR("ncm_ipa_init_module failed: %d\n",
 			   rc);
 		ncm_ipa_cleanup_module();
 	}
+#endif
 	return rc;
 }
 fs_initcall(ipa_late_init);
@@ -59,8 +63,12 @@ static void __exit ipa_late_exit(void)
 {
 	IPADBG("IPA late exit\n");
 	ipa3_wwan_cleanup();
+#ifdef CONFIG_RNDIS_IPA
 	rndis_ipa_cleanup_module();
+#endif
+#ifdef CONFIG_NCM_IPA
 	ncm_ipa_cleanup_module();
+#endif
 }
 module_exit(ipa_late_exit);
 
