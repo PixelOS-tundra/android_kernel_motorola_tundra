@@ -251,6 +251,16 @@ config QCOM_ADSP_LOADER_LEGACY
 	  nodes, which have no qcom,rproc-handle. Writing 1 boots the rproc
 	  of the qcom,pil-tz-generic node with the matching firmware name.
 
+config QCOM_SUBSYS_LEGACY
+	tristate "5.4 msm_subsys interface for lahaina PIL remoteprocs"
+	depends on QCOM_Q6V5_PAS
+	help
+	  Provides /sys/bus/msm_subsys/devices/subsys<N>/{name,state,...}
+	  and /dev/subsys_<name> for the rprocs of the 5.4 lahaina PIL nodes
+	  (qcom,pil-tz-generic) that the stock peripheral manager
+	  (pm-service) starts: the first open of /dev/subsys_<name> boots
+	  the rproc, the last close shuts it down.
+
 config QCOM_SPSS
 	tristate "QTI Secure Subsystem Peripheral loading support"
 	depends on OF && ARCH_QCOM

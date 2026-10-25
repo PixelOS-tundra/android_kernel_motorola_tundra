@@ -30,6 +30,7 @@ obj-$(CONFIG_QCOM_Q6V5_ADSP)		+= qcom_q6v5_adsp.o
 obj-$(CONFIG_QCOM_Q6V5_MSS)		+= qcom_q6v5_mss.o
 obj-$(CONFIG_QCOM_Q6V5_PAS)		+= qcom_q6v5_pas.o
 obj-$(CONFIG_QCOM_ADSP_LOADER_LEGACY)	+= qcom_adsp_loader_legacy.o
+obj-$(CONFIG_QCOM_SUBSYS_LEGACY)	+= qcom_subsys_legacy.o
 obj-$(CONFIG_QCOM_SPSS)                 += qcom_spss.o
 obj-$(CONFIG_QCOM_Q6V5_WCSS)		+= qcom_q6v5_wcss.o
 obj-$(CONFIG_QCOM_SYSMON)		+= qcom_sysmon.o
