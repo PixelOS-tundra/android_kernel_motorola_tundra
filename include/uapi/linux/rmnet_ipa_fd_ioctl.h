@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _RMNET_IPA_FD_IOCTL_H
@@ -37,8 +36,10 @@
 #define WAN_IOCTL_ADD_OFFLOAD_CONNECTION     18
 #define WAN_IOCTL_RMV_OFFLOAD_CONNECTION     19
 #define WAN_IOCTL_GET_WAN_MTU                20
-#define WAN_IOCTL_SET_DATA_QUOTA_WARNING     21
-#define WAN_IOCTL_NOTIFY_NAT_MOVE_RES        22
+#define WAN_IOCTL_NOTIFY_NAT_MOVE_RES        21
+#define WAN_IOCTL_NOTIFY_DUAL_BACKHAUL_INFO   22
+/* 6.1 addition, numbered after the 5.4 ioctls */
+#define WAN_IOCTL_SET_DATA_QUOTA_WARNING     23
 
 /* User space may not have this defined. */
 #ifndef IFNAMSIZ
@@ -86,13 +87,11 @@ struct wan_ioctl_set_data_quota {
  * @interface_name:  Name of the interface on which to set the quota or
  *                   warning.
  * @quota_mbytes:    Quota (in Mbytes) for the above interface.
- * @set_quota:       Indicate whether to set the quota/warning (use 1) or
- *                   unset the quota/warning.
- * @set_warning:     Indicate whether to set the quota/warning (use 1) or
- *                   unset the quota/warning.
- * @warning_mbytes:  Warning (in Mbytes) for the above interface.
+ * @set_quota:       Indicate whether to set the quota (use 1) or
+ *                   unset the quota.
  * @set_warning:     Indicate whether to set the warning (use 1) or
  *                   unset the warning.
+ * @warning_mbytes:  Warning (in Mbytes) for the above interface.
  *
  * The structure to be used by the user space in order to request
  * a quota to be set on a specific interface (by specifying its name).
@@ -224,6 +223,10 @@ struct wan_ioctl_query_per_client_stats {
 		WAN_IOCTL_ADD_FLT_RULE, \
 		struct ipa_install_fltr_rule_req_msg_v01 *)
 
+#define  WAN_IOC_NOTIFY_DUAL_BACKHAUL_INFO _IOWR(WAN_IOC_MAGIC, \
+		WAN_IOCTL_NOTIFY_DUAL_BACKHAUL_INFO, \
+		struct ipa_eth_backhaul_info_req_msg_v01 *)
+
 #define WAN_IOC_ADD_FLT_RULE_INDEX _IOWR(WAN_IOC_MAGIC, \
 		WAN_IOCTL_ADD_FLT_INDEX, \
 		struct ipa_fltr_installed_notif_req_msg_v01 *)
@@ -304,11 +307,11 @@ struct wan_ioctl_query_per_client_stats {
 		WAN_IOCTL_GET_WAN_MTU, \
 		struct ipa_mtu_info *)
 
+#define WAN_IOC_NOTIFY_NAT_MOVE_RES _IOWR(WAN_IOC_MAGIC, \
+	WAN_IOCTL_NOTIFY_NAT_MOVE_RES, \
+	bool)
 #define WAN_IOC_SET_DATA_QUOTA_WARNING _IOWR(WAN_IOC_MAGIC, \
 		WAN_IOCTL_SET_DATA_QUOTA_WARNING, \
 		struct wan_ioctl_set_data_quota_warning)
 
-#define WAN_IOC_NOTIFY_NAT_MOVE_RES _IOWR(WAN_IOC_MAGIC, \
-	WAN_IOCTL_NOTIFY_NAT_MOVE_RES, \
-	bool)
 #endif /* _RMNET_IPA_FD_IOCTL_H */
