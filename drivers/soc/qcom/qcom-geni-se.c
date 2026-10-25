@@ -6,6 +6,7 @@
 
 #include <linux/acpi.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
 #include <linux/interconnect.h>
@@ -972,6 +973,48 @@ EXPORT_SYMBOL(geni_icc_disable);
 
 static const char * const qup_clks[2];
 
+/*
+ * DEBUG (k61 bring-up): with k61.qupcore, turn on the QUP0 wrapper core
+ * clocks (5.4 GCC_QUPV3_WRAP0_CORE_2X_CLK/CORE_CLK = 80/81) directly, to
+ * tell an ineffective QUP0 BCM vote from other causes of the SE6 hang.
+ */
+static bool k61_qupcore;
+
+static int __init k61_qupcore_setup(char *str)
+{
+	k61_qupcore = true;
+	return 1;
+}
+__setup("k61.qupcore", k61_qupcore_setup);
+
+static void k61_qupcore_enable(struct device *dev, struct device_node *se_np)
+{
+	struct of_phandle_args spec;
+	struct clk *clk;
+	int i, ret;
+
+	if (!k61_qupcore || !strstr(dev_name(dev), "9c0000"))
+		return;
+
+	ret = of_parse_phandle_with_args(se_np, "clocks", "#clock-cells", 0, &spec);
+	if (ret) {
+		dev_err(dev, "k61.qupcore: no GCC phandle: %d\n", ret);
+		return;
+	}
+
+	for (i = 80; i <= 81; i++) {
+		spec.args[0] = i;
+		clk = of_clk_get_from_provider(&spec);
+		if (IS_ERR(clk)) {
+			dev_err(dev, "k61.qupcore: gcc %d: %ld\n", i, PTR_ERR(clk));
+			continue;
+		}
+		ret = clk_prepare_enable(clk);
+		dev_info(dev, "k61.qupcore: enabled %s -> %d\n", __clk_get_name(clk), ret);
+	}
+	of_node_put(spec.np);
+}
+
 static void geni_se_put_legacy_clks(void *data)
 {
 	struct geni_wrapper *wrapper = data;
@@ -1011,6 +1054,7 @@ static int geni_se_get_legacy_clks(struct geni_wrapper *wrapper)
 		of_node_put(np);
 
 		wrapper->num_clks = ARRAY_SIZE(qup_clks);
+		k61_qupcore_enable(dev, np);
 		return devm_add_action_or_reset(dev, geni_se_put_legacy_clks, wrapper);
 	}
 
