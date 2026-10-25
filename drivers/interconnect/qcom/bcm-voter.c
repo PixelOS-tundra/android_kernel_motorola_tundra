@@ -500,6 +500,33 @@ static int commit_crm(struct bcm_voter *voter)
 	return 0;
 }
 
+/*
+ * DEBUG (k61 bring-up): log every aggregation of the QUP BCMs (unit, width,
+ * AMC/WAKE/SLEEP votes), and the stack of the first QUP0 commit whose AMC
+ * vote is 0. The QUP0 core clock turns off between the SPI probe and its
+ * first transfer on tundra.
+ */
+static void k61_bcm_trace(struct bcm_voter *voter, struct qcom_icc_bcm *bcm)
+{
+	static int count;
+	static bool stacked;
+
+	if (strncmp(bcm->name, "QUP", 3) || count >= 40)
+		return;
+	count++;
+	pr_info("k61bcm: %s %s init %d amc %d unit %u width %u x %llu/%llu/%llu y %llu/%llu/%llu\n",
+		dev_name(voter->dev), bcm->name, voter->init, voter->has_amc,
+		bcm->aux_data.unit, bcm->aux_data.width,
+		bcm->vote_x[QCOM_ICC_BUCKET_AMC], bcm->vote_x[QCOM_ICC_BUCKET_WAKE],
+		bcm->vote_x[QCOM_ICC_BUCKET_SLEEP], bcm->vote_y[QCOM_ICC_BUCKET_AMC],
+		bcm->vote_y[QCOM_ICC_BUCKET_WAKE], bcm->vote_y[QCOM_ICC_BUCKET_SLEEP]);
+	if (!stacked && !strcmp(bcm->name, "QUP0") &&
+	    !bcm->vote_x[QCOM_ICC_BUCKET_AMC] && !bcm->vote_y[QCOM_ICC_BUCKET_AMC]) {
+		stacked = true;
+		dump_stack();
+	}
+}
+
 /**
  * qcom_icc_bcm_voter_commit - generates and commits tcs cmds based on bcms
  * @voter: voter that needs flushing
@@ -531,6 +558,7 @@ int qcom_icc_bcm_voter_commit(struct bcm_voter *voter)
 			bcm_aggregate_mask(bcm);
 		else
 			bcm_aggregate(bcm, voter->init);
+		k61_bcm_trace(voter, bcm);
 	}
 
 	if (voter->crm)
