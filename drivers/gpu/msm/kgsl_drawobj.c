@@ -1495,7 +1495,7 @@ int kgsl_drawobj_cmd_add_cmdlist(struct kgsl_device *device,
 		if (ret)
 			return ret;
 
-		ptr += sizeof(obj);
+		ptr += size;
 	}
 
 	return 0;
@@ -1540,7 +1540,7 @@ int kgsl_drawobj_cmd_add_memlist(struct kgsl_device *device,
 				return ret;
 		}
 
-		ptr += sizeof(obj);
+		ptr += size;
 	}
 
 	return 0;
@@ -1607,7 +1607,7 @@ int kgsl_drawobj_sync_add_synclist(struct kgsl_device *device,
 		if (ret)
 			return ret;
 
-		ptr += sizeof(syncpoint);
+		ptr += size;
 	}
 
 	return 0;
