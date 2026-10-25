@@ -222,6 +222,54 @@ static atomic_t k61_spi_steps = ATOMIC_INIT(0);
 	}								\
 } while (0)
 
+/*
+ * DEBUG (k61 bring-up): read map of QUP0 before the first SE6 write, to
+ * tell which part of the QUP0 wrapper is unreachable: the GCC QUP0 branch
+ * and block reset registers, the wrapper's QUP_HW_VER, SE3 (the UART left
+ * configured by the bootloader) and SE6's GENI_FW_REVISION_RO.
+ */
+static void k61_spi_read_map(struct device *dev, void __iomem *se_base)
+{
+	static const u32 gcc_regs[] = {
+		0x17000, 0x17004, 0x17008, 0x1772c, 0x23000, 0x23008, 0x52008,
+	};
+	static bool done;
+	void __iomem *base;
+	int i;
+
+	if (done || !strstr(dev_name(dev), "998000"))
+		return;
+	done = true;
+
+	base = ioremap(0x100000, 0x1f0000);
+	if (base) {
+		for (i = 0; i < ARRAY_SIZE(gcc_regs); i++)
+			dev_info(dev, "k61map: gcc 0x%05x = 0x%08x\n", gcc_regs[i],
+				 readl_relaxed(base + gcc_regs[i]));
+		iounmap(base);
+	}
+
+	k61_spi_step(dev, "map: reading QUP0 wrapper QUP_HW_VER");
+	base = ioremap(0x9c0000, 0x1000);
+	if (base) {
+		dev_info(dev, "k61map: qup0 hw_ver = 0x%08x\n", readl(base + 0x4));
+		iounmap(base);
+	}
+
+	k61_spi_step(dev, "map: reading SE3 GENI_FW_REVISION_RO");
+	base = ioremap(0x98c000, 0x1000);
+	if (base) {
+		dev_info(dev, "k61map: se3 fw_rev = 0x%08x\n",
+			 readl(base + GENI_FW_REVISION_RO));
+		iounmap(base);
+	}
+
+	k61_spi_step(dev, "map: reading SE6 GENI_FW_REVISION_RO");
+	dev_info(dev, "k61map: se6 fw_rev = 0x%08x if_disable 0x%08x\n",
+		 readl(se_base + GENI_FW_REVISION_RO),
+		 readl(se_base + GENI_IF_DISABLE_RO));
+}
+
 struct spi_geni_master {
 	struct geni_se spi_rsc;
 	struct clk *m_ahb_clk;
@@ -3848,6 +3896,7 @@ exit_rt_resume:
 		     __clk_is_enabled(geni_mas->m_ahb_clk),
 		     __clk_is_enabled(geni_mas->s_ahb_clk));
 
+	k61_spi_read_map(dev, geni_mas->base);
 	geni_write_reg(0x7f, geni_mas->base, GENI_OUTPUT_CTRL);
 	k61_spi_step(dev, "runtime_resume: GENI_OUTPUT_CTRL written");
 	/* Added 10 us delay to settle the write of the register as per HW team recommendation */
