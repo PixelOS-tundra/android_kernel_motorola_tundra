@@ -34,6 +34,7 @@
 #include <linux/security.h>
 #include <linux/memblock.h>
 #include <linux/syscalls.h>
+#include <linux/k61-stop.h>
 #include <linux/crash_core.h>
 #include <linux/ratelimit.h>
 #include <linux/kmsg_dump.h>
@@ -666,6 +667,20 @@ static ssize_t devkmsg_write(struct kiocb *iocb, struct iov_iter *from)
 
 	if (!user || len > LOG_LINE_MAX)
 		return -EINVAL;
+
+	/*
+	 * DEBUG (k61.data=ckpt): init's boot-completed lines end the run. Look
+	 * at a copy of the iterator, before ratelimiting or devkmsg=off can
+	 * drop the line.
+	 */
+	if (k61_stop_data_ckpt && task_pid_nr(current) == 1) {
+		struct iov_iter it = *from;
+		char head[128];
+		size_t n = copy_from_iter(head, min(len, sizeof(head) - 1), &it);
+
+		head[n] = '\0';
+		k61_stop_ckpt_kmsg(head, n);
+	}
 
 	/* Ignore when user logging is disabled. */
 	if (devkmsg_log & DEVKMSG_LOG_MASK_OFF)

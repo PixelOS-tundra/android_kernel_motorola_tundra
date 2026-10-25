@@ -29,6 +29,7 @@
 #include <linux/zstd.h>
 #include <linux/lz4.h>
 #include <linux/cleancache.h>
+#include <linux/k61-stop.h>
 
 #include "f2fs.h"
 #include "node.h"
@@ -2375,6 +2376,13 @@ static int f2fs_enable_checkpoint(struct f2fs_sb_info *sbi)
 	return ret;
 }
 
+/* DEBUG (k61.data=ckpt): is the checkpoint of this f2fs disabled? */
+bool f2fs_k61_checkpoint_disabled(struct super_block *sb)
+{
+	return sb->s_magic == F2FS_SUPER_MAGIC &&
+	       is_sbi_flag_set(F2FS_SB(sb), SBI_CP_DISABLED);
+}
+
 static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(sb);
@@ -2437,6 +2445,20 @@ static int f2fs_remount(struct super_block *sb, int *flags, char *data)
 	err = parse_options(sb, data, true);
 	if (err)
 		goto restore_opts;
+
+	/*
+	 * DEBUG (k61.data=ckpt): while the checkpoint is disabled, refuse any
+	 * remount that would enable it again (commit the writes since it was
+	 * disabled). default_options() cleared checkpoint=disable, so that is
+	 * every remount that does not ask for it again: vold's commitChanges
+	 * (checkpoint=enable), but also an emergency read-only remount.
+	 */
+	if (k61_stop_data_ckpt && is_sbi_flag_set(sbi, SBI_CP_DISABLED) &&
+	    !test_opt(sbi, DISABLE_CHECKPOINT)) {
+		k61_stop_ckpt_refuse_enable(sb->s_id);
+		err = -EPERM;
+		goto restore_opts;
+	}
 
 	/*
 	 * Previous and new state of filesystem is RO,

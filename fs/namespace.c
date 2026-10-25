@@ -3075,6 +3075,9 @@ static int do_new_mount(struct path *path, const char *fstype, int sb_flags,
 			name ?: "(null)", path->dentry, fstype);
 		sb_flags |= SB_RDONLY;
 	}
+	/* DEBUG (k61.data=ckpt): rw f2fs only with checkpoint=disable */
+	if (k61_stop_data_ckpt && !(sb_flags & SB_RDONLY))
+		k61_stop_ckpt_mount_check(path, name, fstype, data);
 
 	if (type->fs_flags & FS_HAS_SUBTYPE) {
 		subtype = strchr(fstype, '.');

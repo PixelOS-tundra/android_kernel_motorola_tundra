@@ -22,13 +22,31 @@
  * /metadata stays read-only). The run stops at the first exec of
  * app_process (zygote) after /data is mounted. Any trip then syncs, closes
  * the userdata write window and only then holds and panics. Nothing on
- * /data may be unlinked, removed or replaced by a rename (-EPERM, logged).
+ * /data may be unlinked, removed or replaced by a rename (-EPERM, logged;
+ * guard F, "k61.guard_f=0" turns it off).
+ *
+ * "k61.data=ckpt" (Phase 2.6c) is k61.data=rw for a full system run under
+ * the userdata f2fs checkpoint that 5.4 started (vdc checkpoint
+ * startCheckpoint), so that everything 6.1 writes to /data is dropped at
+ * the next mount. Every rw f2fs mount must ask for checkpoint=disable (else
+ * the run stops before mounting) and /data must come up with the
+ * checkpoint disabled. The commit is blocked: f2fs refuses every remount
+ * that would enable the checkpoint again, /metadata stays read-only and
+ * partition write opens stay denied. Whole UFS LUNs may be opened for
+ * writing (the boot HAL reads the GPT through a read-write fd), but the
+ * first write to one stops the run: that is the boot HAL marking the slot
+ * successful, the first step of vold's commitChanges, which system_server
+ * calls right before it sets sys.boot_completed. The run does not stop at
+ * zygote; it stops there, at init's "Boot completed" /dev/kmsg line, or
+ * k61.data_hold seconds (default 300) after the /data mount. Trips do not
+ * sync; they close the userdata window, hold and panic.
  */
 #ifndef _LINUX_K61_STOP_H
 #define _LINUX_K61_STOP_H
 
 #include <linux/types.h>
 
+struct block_device;
 struct dentry;
 struct path;
 struct super_block;
@@ -37,6 +55,7 @@ extern bool k61_stop_init;
 extern bool k61_stop_exec;
 extern bool k61_stop_data_ro;
 extern bool k61_stop_data_rw;
+extern bool k61_stop_data_ckpt;
 extern bool k61_stop_data_closed;
 
 __printf(1, 2) __noreturn void k61_stop_guard_trip(const char *fmt, ...);
@@ -48,5 +67,12 @@ int k61_stop_data_delete_check(const char *op, struct dentry *dentry,
 void k61_stop_data_probe(void);
 bool k61_stop_rw_mount_allowed(const struct path *path);
 void k61_stop_exec_check(const char *filename);
+void k61_stop_ckpt_mount_check(const struct path *path, const char *source,
+			       const char *fstype, const void *data);
+bool k61_stop_ckpt_whole_disk(struct block_device *bdev);
+void k61_stop_ckpt_whole_disk_write(struct block_device *bdev);
+void k61_stop_ckpt_refuse_enable(const char *id);
+void k61_stop_ckpt_kmsg(const char *line, size_t len);
+bool f2fs_k61_checkpoint_disabled(struct super_block *sb);
 
 #endif

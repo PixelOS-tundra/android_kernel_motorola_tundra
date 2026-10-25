@@ -510,7 +510,9 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 	 * on every boot. With k61.data=ro, every other storage write open
 	 * fails instead of tripping the guard, so fsck, mkfs and wipes fail
 	 * without stopping the run (fs_mgr runs e2fsck on several vendor
-	 * partitions before /data).
+	 * partitions before /data). k61.data=ckpt allows write opens of the
+	 * whole LUNs, which the boot HAL needs to read the slot attributes,
+	 * and stops at the first write to one (blkdev_write_iter()).
 	 */
 	if (k61_stop_init && (filp->f_mode & FMODE_WRITE) &&
 	    (!strncmp(bdev->bd_disk->disk_name, "sd", 2) ||
@@ -520,6 +522,9 @@ static int blkdev_open(struct inode *inode, struct file *filp)
 
 		if (!strcmp(volname, "ssd")) {
 			pr_info("k61.stop: allowing write open of %pg (ssd) by %s[%d]\n",
+				bdev, current->comm, task_pid_nr(current));
+		} else if (k61_stop_ckpt_whole_disk(bdev)) {
+			pr_info("k61.stop: allowing write open of %pg (whole LUN, writes stop the run) by %s[%d]\n",
 				bdev, current->comm, task_pid_nr(current));
 		} else if (k61_stop_data_ro) {
 			pr_info("k61.stop: denying write open of %pD (%pg) by %s[%d]\n",
@@ -587,6 +592,10 @@ static ssize_t blkdev_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	struct blk_plug plug;
 	size_t shorted = 0;
 	ssize_t ret;
+
+	/* DEBUG (k61.data=ckpt): a write to a whole UFS LUN stops the run */
+	if (k61_stop_data_ckpt)
+		k61_stop_ckpt_whole_disk_write(bdev);
 
 	if (bdev_read_only(bdev))
 		return -EPERM;

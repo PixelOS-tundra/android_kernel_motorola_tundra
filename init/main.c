@@ -1686,6 +1686,7 @@ bool k61_stop_init;
 bool k61_stop_exec;
 bool k61_stop_data_ro;
 bool k61_stop_data_rw;
+bool k61_stop_data_ckpt;
 bool k61_stop_data_closed;
 static bool k61_stop_data_mounted;
 static unsigned int k61_stop_timeout_s;
@@ -1714,22 +1715,36 @@ __setup("k61.stop", bringup_stop_setup);
 
 static int __init k61_stop_data_setup(char *str)
 {
-	if (!strcmp(str, "rw"))
+	if (!strcmp(str, "ckpt")) {
+		k61_stop_data_ckpt = true;
 		k61_stop_data_rw = true;
-	else if (strcmp(str, "ro"))
+	} else if (!strcmp(str, "rw")) {
+		k61_stop_data_rw = true;
+	} else if (strcmp(str, "ro")) {
 		return 0;
+	}
 	k61_stop_data_ro = true;
 	return 1;
 }
 __setup("k61.data=", k61_stop_data_setup);
 
-static unsigned int k61_stop_data_hold_s = 30;
+/* 0: the default, 30s (300s with k61.data=ckpt) */
+static unsigned int k61_stop_data_hold_s;
 
 static int __init k61_stop_data_hold_setup(char *str)
 {
 	return !kstrtouint(str, 0, &k61_stop_data_hold_s);
 }
 __setup("k61.data_hold=", k61_stop_data_hold_setup);
+
+/* "k61.guard_f=0" turns guard F (no deletes on /data) off */
+static bool k61_stop_guard_f = true;
+
+static int __init k61_stop_guard_f_setup(char *str)
+{
+	return !kstrtobool(str, &k61_stop_guard_f);
+}
+__setup("k61.guard_f=", k61_stop_guard_f_setup);
 
 static char k61_stop_probe_paths[256] =
 	"/data/misc/vold/user_keys/de/0/encrypted_key,"
@@ -1826,7 +1841,7 @@ int k61_stop_data_delete_check(const char *op, struct dentry *dentry,
 {
 	struct super_block *sb = READ_ONCE(k61_stop_data_sb);
 
-	if (!k61_stop_data_rw || !sb || dentry->d_sb != sb)
+	if (!k61_stop_data_rw || !k61_stop_guard_f || !sb || dentry->d_sb != sb)
 		return 0;
 	if (from)
 		pr_info("k61.stop: denying %s of %pd2 (from %pd2) by %s[%d]\n",
@@ -1854,12 +1869,125 @@ void k61_stop_block_mounted(const struct path *path, struct super_block *sb,
 		source ?: "(null)", mnt, fstype, err);
 	if (!err && !strcmp(mnt, "/data") &&
 	    !timer_pending(&k61_stop_data_timer)) {
+		/*
+		 * k61.data=ckpt: everything 6.1 writes from here on must be
+		 * covered by the checkpoint. If f2fs did not disable it, stop
+		 * now, without syncing.
+		 */
+		if (k61_stop_data_ckpt) {
+			if (!sb || !f2fs_k61_checkpoint_disabled(sb))
+				k61_stop_guard_trip("/data is mounted with the f2fs checkpoint enabled");
+			pr_info("k61.stop: /data checkpoint disabled, writes are rolled back unless committed\n");
+			/* the init2 timeout must not end the system run */
+			mod_timer(&k61_stop_timer,
+				  jiffies + (k61_stop_data_hold_s + 30) * HZ);
+		}
 		WRITE_ONCE(k61_stop_data_sb, sb);
 		WRITE_ONCE(k61_stop_data_mounted, true);
 		pr_info("k61.stop: /data mounted, stopping in %us\n",
 			k61_stop_data_hold_s);
 		mod_timer(&k61_stop_data_timer,
 			  jiffies + k61_stop_data_hold_s * HZ);
+	}
+}
+
+/*
+ * k61.data=ckpt: every read-write f2fs mount (/data is the only f2fs) must
+ * be a checkpoint=disable mount, i.e. fs_mgr found the checkpoint that 5.4
+ * started with vdc. A plain rw mount would make 6.1's writes permanent, and
+ * f2fs_fill_super() would even commit a checkpoint left disabled by an
+ * earlier boot. Checked before the mount, so nothing is written yet. The
+ * last "checkpoint=" option is the one f2fs uses.
+ */
+void k61_stop_ckpt_mount_check(const struct path *path, const char *source,
+			       const char *fstype, const void *data)
+{
+	const char *opt = NULL, *p = data, *end;
+
+	if (!k61_stop_data_ckpt || strcmp(fstype, "f2fs"))
+		return;
+	/* the legacy mount data is a page; the options end at the NUL */
+	end = p ? p + strnlen(p, PAGE_SIZE - 1) : NULL;
+	while (p && (p = strnstr(p, "checkpoint=", end - p))) {
+		opt = p;
+		p += strlen("checkpoint=");
+	}
+	if (!opt || strncmp(opt, "checkpoint=disable", 18))
+		k61_stop_guard_trip("refusing rw f2fs mount of %s on %pd without checkpoint=disable (no checkpoint started on 5.4?)",
+				    source ?: "(null)", path->dentry);
+	p = strnchr(opt, end - opt, ',');
+	pr_info("k61.stop: rw f2fs mount of %s on %pd with %.*s\n",
+		source ?: "(null)", path->dentry,
+		(int)((p ?: end) - opt), opt);
+}
+
+/*
+ * k61.data=ckpt: called by f2fs_remount() when a remount would enable the
+ * checkpoint again (vold's commitChanges remounts /data with
+ * checkpoint=enable; any remount without checkpoint=disable, including an
+ * emergency read-only remount, has the same effect). f2fs refuses it with
+ * -EPERM and the run stops; the caller holds s_umount, so the trip runs
+ * from the workqueue.
+ */
+void k61_stop_ckpt_refuse_enable(const char *id)
+{
+	pr_emerg("k61.stop: refusing to enable the checkpoint on %s (commit) by %s[%d]\n",
+		 id, current->comm, task_pid_nr(current));
+	k61_stop_guard_trip_async("refused a checkpoint commit (remount of %s by %s)",
+				  id, current->comm);
+}
+
+/*
+ * k61.data=ckpt: the QTI boot HAL (gpt-utils) opens the whole UFS LUN
+ * read-write even to read the slot attributes (vold's needsCheckpoint,
+ * update_verifier, update_engine), so write opens of whole LUNs are
+ * allowed. Writes to them are not: k61_stop_ckpt_whole_disk_write() stops
+ * the run, and the bio barrier still refuses anything else.
+ */
+bool k61_stop_ckpt_whole_disk(struct block_device *bdev)
+{
+	return k61_stop_data_ckpt && !bdev_is_partition(bdev) &&
+	       !strncmp(bdev->bd_disk->disk_name, "sd", 2);
+}
+
+/*
+ * k61.data=ckpt: called by blkdev_write_iter(). The first write to a whole
+ * UFS LUN is the boot HAL marking the slot successful (gpt-utils rewrites
+ * both GPTs), which is the first step of vold's cp_commitChanges();
+ * system_server calls it from finishBooting() after the boot animation,
+ * right before it sets sys.boot_completed. Failing it would make
+ * system_server reboot ("Checkpoint commit failed"), so the writer is held
+ * here instead: the lock screen stays up for the hold, then the panic ends
+ * the run. Returns if this is not a whole LUN.
+ */
+void k61_stop_ckpt_whole_disk_write(struct block_device *bdev)
+{
+	if (!k61_stop_ckpt_whole_disk(bdev))
+		return;
+	if (!READ_ONCE(k61_stop_data_mounted))
+		k61_stop_guard_trip("refusing a write to %pg by %s[%d] before /data is mounted",
+				    bdev, current->comm, task_pid_nr(current));
+	k61_stop_guard_trip("stopping at the write to %pg by %s[%d] (boot HAL marking the slot successful: checkpoint commit, boot completed)",
+			    bdev, current->comm, task_pid_nr(current));
+}
+
+/*
+ * k61.data=ckpt: init writes "Boot completed" to /dev/kmsg on
+ * sys.boot_completed=1 (init.qcom.rc, init.qti.kernel.rc) and logs its
+ * action triggers. Either ends the run. Only reached if the commit did not
+ * stop it first, e.g. with persist.vold.dont_commit_checkpoint=1. Called
+ * from devkmsg_write() for PID 1 with the start of the line; init must not
+ * block, so the trip runs from the workqueue.
+ */
+void k61_stop_ckpt_kmsg(const char *line, size_t len)
+{
+	if (!k61_stop_data_ckpt || !READ_ONCE(k61_stop_data_mounted))
+		return;
+	if (strnstr(line, "Boot completed", len) ||
+	    strnstr(line, "sys.boot_completed=1", len)) {
+		pr_emerg("k61.stop: sys.boot_completed=1 (init: %.*s)\n",
+			 (int)strcspn(line, "\n"), line);
+		k61_stop_guard_trip_async("sys.boot_completed=1");
 	}
 }
 
@@ -1899,7 +2027,9 @@ bool k61_stop_rw_mount_allowed(const struct path *path)
  */
 void k61_stop_exec_check(const char *filename)
 {
-	if (!k61_stop_data_rw || !READ_ONCE(k61_stop_data_mounted))
+	/* k61.data=ckpt runs the whole system */
+	if (!k61_stop_data_rw || k61_stop_data_ckpt ||
+	    !READ_ONCE(k61_stop_data_mounted))
 		return;
 	if (!strncmp(filename, "/system/bin/app_process", 23) ||
 	    !strcmp(filename, "/system/bin/zygote_next"))
@@ -1924,8 +2054,12 @@ void k61_stop_guard_trip(const char *fmt, ...)
 	 * k61.data=rw: write back what /data has so far (a consistent f2fs
 	 * checkpoint), then refuse all further userdata writes, so the hold
 	 * and the panic leave /data as if it had been synced and powered off.
+	 * k61.data=ckpt does not sync: the checkpoint drops all of it anyway.
 	 */
-	if (k61_stop_data_rw && !READ_ONCE(k61_stop_data_closed)) {
+	if (k61_stop_data_ckpt && !READ_ONCE(k61_stop_data_closed)) {
+		WRITE_ONCE(k61_stop_data_closed, true);
+		pr_emerg("k61.stop: userdata writes closed (no sync, checkpoint)\n");
+	} else if (k61_stop_data_rw && !READ_ONCE(k61_stop_data_closed)) {
 		pr_emerg("k61.stop: syncing\n");
 		ksys_sync();
 		WRITE_ONCE(k61_stop_data_closed, true);
@@ -1997,12 +2131,18 @@ static int __ref kernel_init(void *unused)
 	if (k61_stop_init) {
 		wait_for_device_probe();
 		driver_probe_state_dump();
+		if (!k61_stop_data_hold_s)
+			k61_stop_data_hold_s = k61_stop_data_ckpt ? 300 : 30;
 		mod_timer(&k61_stop_timer, jiffies + k61_stop_timeout_s * HZ);
-		pr_info("k61.stop: %s mode, guards on, timeout %us%s\n",
+		pr_info("k61.stop: %s mode, guards on, timeout %us%s%s\n",
 			k61_stop_exec ? "init" : "init2", k61_stop_timeout_s,
-			k61_stop_data_ro ? ", data read-only" : "");
+			k61_stop_data_ckpt ? ", data under checkpoint" :
+			k61_stop_data_rw ? ", data read-write" :
+			k61_stop_data_ro ? ", data read-only" : "",
+			k61_stop_data_rw && !k61_stop_guard_f ? ", guard F off" : "");
 	} else {
 		k61_stop_data_ro = false;
+		k61_stop_data_ckpt = false;
 	}
 
 	system_state = SYSTEM_FREEING_INITMEM;
