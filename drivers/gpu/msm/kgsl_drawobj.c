@@ -534,7 +534,7 @@ drawobj_get_sync_timeline_priv(void __user *uptr, u64 usize, u32 count)
 	for (i = 0; i < count; i++, uptr += usize) {
 		struct kgsl_timeline_val val;
 
-		if (copy_struct_from_user(&val, sizeof(val), uptr, usize))
+		if (kgsl_copy_struct_from_user(&val, sizeof(val), uptr, usize))
 			continue;
 
 		priv[i].timeline = val.timeline;
@@ -557,7 +557,7 @@ static int drawobj_add_sync_timeline(struct kgsl_device *device,
 	unsigned int id;
 	int ret;
 
-	if (copy_struct_from_user(&sync, sizeof(sync), uptr, usize))
+	if (kgsl_copy_struct_from_user(&sync, sizeof(sync), uptr, usize))
 		return -EFAULT;
 
 	fence = kgsl_timelines_to_fence_array(device, sync.timelines,
@@ -627,7 +627,7 @@ static int drawobj_add_sync_fence(struct kgsl_device *device,
 	struct event_fence_info *priv;
 	unsigned int id, i;
 
-	if (copy_struct_from_user(&sync, sizeof(sync), data, datasize))
+	if (kgsl_copy_struct_from_user(&sync, sizeof(sync), data, datasize))
 		return -EFAULT;
 
 	kref_get(&drawobj->refcount);
@@ -764,7 +764,7 @@ static int drawobj_add_sync_timestamp_from_user(struct kgsl_device *device,
 {
 	struct kgsl_cmd_syncpoint_timestamp timestamp;
 
-	if (copy_struct_from_user(&timestamp, sizeof(timestamp),
+	if (kgsl_copy_struct_from_user(&timestamp, sizeof(timestamp),
 			data, datasize))
 		return -EFAULT;
 
@@ -941,7 +941,7 @@ static int get_aux_command(void __user *ptr, u64 generic_size,
 	struct kgsl_gpu_aux_command_generic generic;
 	u64 size;
 
-	if (copy_struct_from_user(&generic, sizeof(generic), ptr, generic_size))
+	if (kgsl_copy_struct_from_user(&generic, sizeof(generic), ptr, generic_size))
 		return -EFAULT;
 
 	if (generic.type != type)
@@ -1039,7 +1039,7 @@ int kgsl_drawobj_add_timeline(struct kgsl_device_private *dev_priv,
 	for (i = 0; i < cmd.count; i++) {
 		struct kgsl_timeline_val val;
 
-		if (copy_struct_from_user(&val, sizeof(val), src,
+		if (kgsl_copy_struct_from_user(&val, sizeof(val), src,
 			cmd.timelines_size)) {
 			ret = -EFAULT;
 			goto err;
@@ -1479,7 +1479,7 @@ int kgsl_drawobj_cmd_add_cmdlist(struct kgsl_device *device,
 		return ret;
 
 	for (i = 0; i < count; i++) {
-		if (copy_struct_from_user(&obj, sizeof(obj), ptr, size))
+		if (kgsl_copy_struct_from_user(&obj, sizeof(obj), ptr, size))
 			return -EFAULT;
 
 		/* Sanity check the flags */
@@ -1518,7 +1518,7 @@ int kgsl_drawobj_cmd_add_memlist(struct kgsl_device *device,
 		return ret;
 
 	for (i = 0; i < count; i++) {
-		if (copy_struct_from_user(&obj, sizeof(obj), ptr, size))
+		if (kgsl_copy_struct_from_user(&obj, sizeof(obj), ptr, size))
 			return -EFAULT;
 
 		if (!(obj.flags & KGSL_OBJLIST_MEMOBJ)) {
@@ -1596,7 +1596,7 @@ int kgsl_drawobj_sync_add_synclist(struct kgsl_device *device,
 		return -ENOMEM;
 
 	for (i = 0; i < count; i++) {
-		if (copy_struct_from_user(&syncpoint, sizeof(syncpoint), ptr, size))
+		if (kgsl_copy_struct_from_user(&syncpoint, sizeof(syncpoint), ptr, size))
 			return -EFAULT;
 
 		sync.type = syncpoint.type;
