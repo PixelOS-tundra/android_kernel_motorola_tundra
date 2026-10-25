@@ -2903,14 +2903,19 @@ static int geni_i2c_resources_init(struct platform_device *pdev, struct geni_i2c
 		return ret;
 	}
 
-	gi2c->m_ahb_clk = devm_clk_get(gi2c->dev->parent, "m-ahb");
+	/* 5.4 binding: the AHB clocks are on the serial engine node */
+	gi2c->m_ahb_clk = devm_clk_get(gi2c->wrapper_dev, "m-ahb");
+	if (PTR_ERR_OR_ZERO(gi2c->m_ahb_clk) == -ENOENT)
+		gi2c->m_ahb_clk = devm_clk_get(gi2c->dev, "m-ahb");
 	if (IS_ERR(gi2c->m_ahb_clk)) {
 		ret = PTR_ERR(gi2c->m_ahb_clk);
 		dev_err(&pdev->dev, "Err getting M AHB clk %d\n", ret);
 		return ret;
 	}
 
-	gi2c->s_ahb_clk = devm_clk_get(gi2c->dev->parent, "s-ahb");
+	gi2c->s_ahb_clk = devm_clk_get(gi2c->wrapper_dev, "s-ahb");
+	if (PTR_ERR_OR_ZERO(gi2c->s_ahb_clk) == -ENOENT)
+		gi2c->s_ahb_clk = devm_clk_get(gi2c->dev, "s-ahb");
 	if (IS_ERR(gi2c->s_ahb_clk)) {
 		ret = PTR_ERR(gi2c->s_ahb_clk);
 		dev_err(&pdev->dev, "Err getting S AHB clk %d\n", ret);
@@ -3037,9 +3042,10 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	}
 
 	gi2c->i2c_rsc.dev = dev;
-	gi2c->i2c_rsc.wrapper = dev_get_drvdata(dev->parent);
+	gi2c->wrapper_dev = geni_se_wrapper_dev(dev);
+	gi2c->i2c_rsc.wrapper = gi2c->wrapper_dev ?
+				dev_get_drvdata(gi2c->wrapper_dev) : NULL;
 	gi2c->i2c_rsc.base = gi2c->base;
-	gi2c->wrapper_dev = dev->parent;
 
 	gi2c->rsc.se_rsc = &gi2c->i2c_rsc;
 	gi2c->rsc.ctrl_dev = dev;
