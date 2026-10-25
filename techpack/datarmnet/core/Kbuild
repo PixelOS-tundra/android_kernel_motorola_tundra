@@ -1,13 +1,12 @@
-ifneq (, $(filter y, $(CONFIG_ARCH_PINEAPPLE) $(CONFIG_ARCH_BLAIR) $(CONFIG_ARCH_MONACO) $(CONFIG_ARCH_PITTI)))
-ccflags-y	+= -DRMNET_LA_PLATFORM
-endif
+# SPDX-License-Identifier: GPL-2.0-only
 
 ccflags-y += \
 	-I$(srctree)/$(src)/../../dataipa/drivers/platform/msm/include \
 	-I$(srctree)/$(src)/../../dataipa/drivers/platform/msm/include/uapi \
-	-I$(srctree)/$(src)/../../datarmnet-ext/mem
+	-I$(srctree)/$(src)/../../datarmnet-ext/mem \
+	-DRMNET_TRACE_INCLUDE_PATH=../../techpack/datarmnet/core
 
-obj-m += rmnet_core.o
+obj-$(CONFIG_QTI_DATARMNET_LAHAINA) += rmnet_core.o
 
 #core sources
 rmnet_core-y := \
@@ -33,9 +32,8 @@ rmnet_core-y += \
 	rmnet_qmap.o \
 	rmnet_ll_qmap.o
 
-ifneq (, $(filter y, $(CONFIG_ARCH_PINEAPPLE) $(CONFIG_ARCH_BLAIR) $(CONFIG_ARCH_PITTI)))
-obj-m += rmnet_ctl.o
+#QMAP control channel over IPA (rmnet_ctl_if() for rmnet_qmap)
+obj-$(CONFIG_QTI_DATARMNET_LAHAINA) += rmnet_ctl.o
 rmnet_ctl-y := \
 	rmnet_ctl_client.o \
 	rmnet_ctl_ipa.o
-endif
