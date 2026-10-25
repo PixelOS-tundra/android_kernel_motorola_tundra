@@ -24,7 +24,7 @@
 set -e
 SRC=$(cd "$(dirname "$0")" && pwd)
 OUT=${OUT:-$SRC/../out-6.1}
-TOOLS=${TOOLS:-$HOME/k61/toolchain}
+TOOLS=${TOOLS:-$SRC/../toolchain}
 MKB=$TOOLS/mkbootimg
 MKDTBO=$TOOLS/libufdt/utils/src/mkdtboimg.py
 IN=$(cd "$1" && pwd)
