@@ -3524,7 +3524,16 @@ static int spi_geni_probe(struct platform_device *pdev)
 		spi_rsc->icc_paths[CPU_TO_GENI].avg_bw,
 		spi_rsc->icc_paths[GENI_TO_DDR].avg_bw);
 
-	if (!geni_mas->is_le_vm) {
+	/*
+	 * Drop the vote taken in geni_spi_resources_init() only if the SE is
+	 * runtime suspended. spi_verify_proto() leaves it active until the
+	 * autosuspend delay expires, and icc_enable()/icc_disable() don't
+	 * count, so disabling here would remove the vote of an active SE:
+	 * that can turn off the QUP core clock (lahaina BCM QUP0), and the
+	 * first transfer then hangs on its first register access.
+	 * runtime_suspend drops the vote once the SE suspends.
+	 */
+	if (!geni_mas->is_le_vm && pm_runtime_status_suspended(&pdev->dev)) {
 		ret = geni_icc_disable(spi_rsc);
 		if (ret) {
 			dev_err(&pdev->dev, "%s: icc disable failed ret:%d\n",
