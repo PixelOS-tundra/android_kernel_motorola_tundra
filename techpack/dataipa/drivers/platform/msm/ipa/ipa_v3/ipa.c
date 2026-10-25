@@ -4187,6 +4187,16 @@ static long ipa3_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 		break;
 
+	case IPA_IOC_GET_HW_FEATURE_SUPPORT: {
+		/* 5.4 ioctl; this driver supports none of its features */
+		u32 hw_feature_support = 0;
+
+		if (copy_to_user((void __user *)arg, &hw_feature_support,
+				 sizeof(hw_feature_support)))
+			retval = -EFAULT;
+		break;
+	}
+
 	case IPA_IOC_SET_PKT_THRESHOLD:
 		IPADBG("Got IPA_IOC_SET_PKT_THRESHOLD\n");
 		if (ipa3_send_pkt_threshold(arg))
