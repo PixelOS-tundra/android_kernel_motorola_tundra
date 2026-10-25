@@ -11127,10 +11127,31 @@ static int get_ipa_dts_configuration(struct platform_device *pdev,
 	result = of_property_read_u32(pdev->dev.of_node,
 		"qcom,max_num_smmu_cb",
 		&ipa_drv_res->max_num_smmu_cb);
-	if (result)
-		IPADBG(": using default max number of cb = %d\n",
+	if (result) {
+		/*
+		 * Without the property, wait for the SMMU CB children the DT
+		 * actually has (the 5.4 lahaina DT has ap, wlan, uc and 11ad)
+		 * rather than for every CB type this driver knows: otherwise
+		 * the FW load never sees all CBs probed and IPA never comes up.
+		 */
+		struct device_node *child;
+		u32 cbs = 0;
+
+		for_each_available_child_of_node(pdev->dev.of_node, child)
+			if (of_device_is_compatible(child, "qcom,ipa-smmu-ap-cb") ||
+			    of_device_is_compatible(child, "qcom,ipa-smmu-wlan-cb") ||
+			    of_device_is_compatible(child, "qcom,ipa-smmu-wlan1-cb") ||
+			    of_device_is_compatible(child, "qcom,ipa-smmu-eth-cb") ||
+			    of_device_is_compatible(child, "qcom,ipa-smmu-eth1-cb") ||
+			    of_device_is_compatible(child, "qcom,ipa-smmu-uc-cb") ||
+			    of_device_is_compatible(child, "qcom,ipa-smmu-11ad-cb") ||
+			    of_device_is_compatible(child, "qcom,ipa-smmu-rtp-cb"))
+				cbs++;
+		if (cbs)
+			ipa_drv_res->max_num_smmu_cb = cbs;
+		IPAERR(": no qcom,max_num_smmu_cb, waiting for %d SMMU CBs\n",
 			ipa_drv_res->max_num_smmu_cb);
-	else
+	} else
 		IPADBG(": found ipa_drv_res->max_num_smmu_cb = %d\n",
 			ipa_drv_res->max_num_smmu_cb);
 
