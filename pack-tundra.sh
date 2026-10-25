@@ -15,6 +15,11 @@
 # (androidboot.fstab_suffix=default), and it holds only the read-only
 # system/system_ext/vendor/product lines, so a fastboot boot test (which uses
 # the stable slot's own vendor_boot) never mounts /metadata or /data.
+# RAMDISK_PROPS="<key>=<value> ..." adds system/etc/ramdisk/build.prop with
+# those properties to the boot.img ramdisk. First-stage init copies it to
+# /second_stage_resources and init loads it before every other build.prop,
+# so the properties exist only while booted from this image (persist.* ones
+# too, unless /data/property/persistent_properties has the key).
 # Usage: ./pack-tundra.sh <dir with boot.img + vendor_boot.img> [dest-dir]
 set -e
 SRC=$(cd "$(dirname "$0")" && pwd)
@@ -27,6 +32,7 @@ DEST=${2:-$SRC/../images/test}
 DTS=$OUT/arch/arm64/boot/dts/vendor/qcom
 SAFE_FSTAB=${SAFE_FSTAB:-1}
 FIRST_STAGE_FSTAB=${FIRST_STAGE_FSTAB:-0}
+RAMDISK_PROPS=${RAMDISK_PROPS:-}
 DTB=${DTB:-$DTS/lahaina-tundra-base.dtb}
 
 mkdir -p "$DEST"
@@ -68,6 +74,25 @@ if [ "$FIRST_STAGE_FSTAB" = 1 ]; then
 	cat "$fs/fstab.default"
 	cp "$boot_ramdisk" "$tmp/boot_ramdisk"
 	(cd "$tmp/fs" && printf "first_stage_ramdisk\nfirst_stage_ramdisk/fstab.default\n" |
+		cpio -o -H newc -R 0:0 --quiet) |
+		lz4 -l -12 --favor-decSpeed >> "$tmp/boot_ramdisk"
+	boot_ramdisk=$tmp/boot_ramdisk
+fi
+
+if [ -n "$RAMDISK_PROPS" ]; then
+	rp=$tmp/rp/system/etc/ramdisk
+	mkdir -p "$rp"
+	for prop in $RAMDISK_PROPS; do
+		case "$prop" in
+		?*=*) echo "$prop" ;;
+		*) echo "bad RAMDISK_PROPS entry: $prop" >&2; exit 1 ;;
+		esac
+	done > "$rp/build.prop"
+	chmod 755 "$tmp/rp/system" "$tmp/rp/system/etc" "$rp"
+	chmod 644 "$rp/build.prop"
+	cat "$rp/build.prop"
+	[ "$boot_ramdisk" = "$tmp/boot_ramdisk" ] || cp "$boot_ramdisk" "$tmp/boot_ramdisk"
+	(cd "$tmp/rp" && printf "system\nsystem/etc\nsystem/etc/ramdisk\nsystem/etc/ramdisk/build.prop\n" |
 		cpio -o -H newc -R 0:0 --quiet) |
 		lz4 -l -12 --favor-decSpeed >> "$tmp/boot_ramdisk"
 	boot_ramdisk=$tmp/boot_ramdisk
