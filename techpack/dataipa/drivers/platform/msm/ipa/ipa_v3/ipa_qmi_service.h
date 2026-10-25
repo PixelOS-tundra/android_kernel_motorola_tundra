@@ -24,7 +24,8 @@
 #define MAX_NUM_QMI_RULE_CACHE 10
 #define MAX_NUM_QMI_MPM_AGGR_CACHE 3
 #define DEV_NAME "ipa-wan"
-#if IS_ENABLED(CONFIG_QCOM_Q6V5_PAS)
+/* the lahaina 5.4 PIL binding keeps the 5.4 subsystem name "modem" */
+#if IS_ENABLED(CONFIG_QCOM_Q6V5_PAS) && !IS_ENABLED(CONFIG_QTI_DATAIPA_LAHAINA)
 #define SUBSYS_LOCAL_MODEM "mpss"
 #else
 #define SUBSYS_LOCAL_MODEM "modem"
