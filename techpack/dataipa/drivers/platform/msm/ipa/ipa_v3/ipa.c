@@ -8475,6 +8475,26 @@ static int ipa3_manual_load_ipa_fws(void)
 }
 
 #if IS_ENABLED(CONFIG_QCOM_MDT_LOADER)
+/*
+ * The 5.4 PIL binding (stock lahaina DT) has no firmware-names/pas-ids/
+ * memory-regions on the IPA node: each image is a separate
+ * qcom,pil-tz-generic node named by qcom,firmware-name (qcom,ipa_fws:
+ * PAS 15, loaded into the GSI firmware region).
+ */
+static struct device_node *ipa_pil_tz_generic_node(const char *sub_sys)
+{
+	struct device_node *np;
+	const char *name;
+
+	for_each_compatible_node(np, NULL, "qcom,pil-tz-generic") {
+		if (!of_property_read_string(np, "qcom,firmware-name", &name) &&
+		    !strcmp(name, sub_sys))
+			return np;
+	}
+
+	return NULL;
+}
+
 static int ipa_firmware_load(const char *sub_sys)
 {
 	const struct firmware *fw;
@@ -8490,11 +8510,34 @@ static int ipa_firmware_load(const char *sub_sys)
 	index = of_property_match_string(dev->of_node, "firmware-names",
 					 sub_sys);
 	if (index < 0) {
-		pr_err("#####Not able to match firmware names prorperty\n");
-		return -EINVAL;
+		struct device_node *pil = ipa_pil_tz_generic_node(sub_sys);
+
+		if (!pil) {
+			pr_err("#####Not able to match firmware names prorperty\n");
+			return -EINVAL;
+		}
+
+		node = of_parse_phandle(pil, "memory-region", 0);
+		ret = of_property_read_u32(pil, "qcom,pas-id", &pas_id);
+		of_node_put(pil);
+		if (ret) {
+			dev_err(dev, "error %d getting \"qcom,pas-id\" property\n",
+				ret);
+			of_node_put(node);
+			return ret;
+		}
+	} else {
+		node = of_parse_phandle(dev->of_node, "memory-regions", index);
+		ret = of_property_read_u32_index(dev->of_node, "pas-ids", index,
+						 &pas_id);
+		if (ret) {
+			dev_err(dev, "error %d getting \"pass-ids\" property\n",
+				ret);
+			of_node_put(node);
+			return ret;
+		}
 	}
 
-	node = of_parse_phandle(dev->of_node, "memory-regions", index);
 	if (!node) {
 		dev_err(dev, "DT error getting \"memory-region\" property\n");
 		return -EINVAL;
@@ -8508,13 +8551,6 @@ static int ipa_firmware_load(const char *sub_sys)
 	}
 
 	scnprintf(fw_name, ARRAY_SIZE(fw_name), "%s.mdt", sub_sys);
-	ret = of_property_read_u32_index(dev->of_node, "pas-ids", index,
-					  &pas_id);
-	if(ret) {
-		dev_err(dev, "error %d getting \"pass-ids\" property\n",
-			ret);
-		return ret;
-	}
 
 	ret = request_firmware(&fw, fw_name, dev);
 	if (ret) {
