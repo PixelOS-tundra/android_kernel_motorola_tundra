@@ -1731,6 +1731,24 @@ __setup("k61.data=", k61_stop_data_setup);
 /* 0: the default, 30s (300s with k61.data=ckpt) */
 static unsigned int k61_stop_data_hold_s;
 
+/*
+ * "k61.ckpt_stop=none" (k61.data=ckpt): don't stop at sys.boot_completed=1,
+ * so the booted system can be used with /data still writable under the
+ * checkpoint; k61.data_hold then ends the run. The commit stop and the
+ * other guards stay. The default, "booted", stops at boot completed.
+ */
+static bool k61_stop_ckpt_booted = true;
+
+static int __init k61_stop_ckpt_stop_setup(char *str)
+{
+	if (!strcmp(str, "none"))
+		k61_stop_ckpt_booted = false;
+	else if (strcmp(str, "booted"))
+		return 0;
+	return 1;
+}
+__setup("k61.ckpt_stop=", k61_stop_ckpt_stop_setup);
+
 static int __init k61_stop_data_hold_setup(char *str)
 {
 	return !kstrtouint(str, 0, &k61_stop_data_hold_s);
@@ -1985,9 +2003,11 @@ void k61_stop_ckpt_kmsg(const char *line, size_t len)
 		return;
 	if (strnstr(line, "Boot completed", len) ||
 	    strnstr(line, "sys.boot_completed=1", len)) {
-		pr_emerg("k61.stop: sys.boot_completed=1 (init: %.*s)\n",
-			 (int)strcspn(line, "\n"), line);
-		k61_stop_guard_trip_async("sys.boot_completed=1");
+		pr_emerg("k61.stop: sys.boot_completed=1 (init: %.*s)%s\n",
+			 (int)strcspn(line, "\n"), line,
+			 k61_stop_ckpt_booted ? "" : ", running on (k61.ckpt_stop=none)");
+		if (k61_stop_ckpt_booted)
+			k61_stop_guard_trip_async("sys.boot_completed=1");
 	}
 }
 
@@ -2140,6 +2160,9 @@ static int __ref kernel_init(void *unused)
 			k61_stop_data_rw ? ", data read-write" :
 			k61_stop_data_ro ? ", data read-only" : "",
 			k61_stop_data_rw && !k61_stop_guard_f ? ", guard F off" : "");
+		if (k61_stop_data_ckpt && !k61_stop_ckpt_booted)
+			pr_info("k61.stop: no stop at boot completed, data_hold %us\n",
+				k61_stop_data_hold_s);
 	} else {
 		k61_stop_data_ro = false;
 		k61_stop_data_ckpt = false;
