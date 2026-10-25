@@ -25,6 +25,8 @@ struct dsp_loader_data {
 	const char *name;
 	/* DT property naming the PIL node's qcom,firmware-name, if any */
 	const char *fw_prop;
+	/* also provide the 5.4 sensors_ssc "ssr" file (write 1: restart) */
+	bool ssr;
 };
 
 struct dsp_loader {
@@ -34,7 +36,8 @@ struct dsp_loader {
 	struct rproc *rproc;
 	struct kobject *kobj;
 	struct kobj_attribute boot_attr;
-	struct attribute *attrs[2];
+	struct kobj_attribute ssr_attr;
+	struct attribute *attrs[3];
 	struct attribute_group group;
 	struct work_struct boot_work;
 	bool booted;
@@ -79,6 +82,26 @@ static ssize_t boot_store(struct kobject *kobj, struct kobj_attribute *attr,
 	return count;
 }
 
+static ssize_t ssr_store(struct kobject *kobj, struct kobj_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct dsp_loader *ldr = container_of(attr, struct dsp_loader,
+					      ssr_attr);
+	int cmd;
+
+	if (kstrtoint(buf, 10, &cmd) || cmd != 1)
+		return -EINVAL;
+
+	if (!ldr->booted)
+		return -EINVAL;
+
+	dev_err(ldr->dev, "Something went wrong with %s, restarting\n",
+		ldr->fw_name);
+	rproc_report_crash(ldr->rproc, RPROC_FATAL_ERROR);
+
+	return count;
+}
+
 static int dsp_loader_probe(struct platform_device *pdev)
 {
 	const struct dsp_loader_data *data;
@@ -112,6 +135,13 @@ static int dsp_loader_probe(struct platform_device *pdev)
 	ldr->boot_attr.attr.mode = 0220;
 	ldr->boot_attr.store = boot_store;
 	ldr->attrs[0] = &ldr->boot_attr.attr;
+	if (data->ssr) {
+		sysfs_attr_init(&ldr->ssr_attr.attr);
+		ldr->ssr_attr.attr.name = "ssr";
+		ldr->ssr_attr.attr.mode = 0220;
+		ldr->ssr_attr.store = ssr_store;
+		ldr->attrs[1] = &ldr->ssr_attr.attr;
+	}
 	ldr->group.attrs = ldr->attrs;
 
 	snprintf(dir, sizeof(dir), "boot_%s", ldr->name);
@@ -164,6 +194,7 @@ static const struct dsp_loader_data cdsp_loader_data = {
 static const struct dsp_loader_data slpi_loader_data = {
 	.name = "slpi",
 	.fw_prop = "qcom,firmware-name",
+	.ssr = true,
 };
 
 static const struct of_device_id dsp_loader_match[] = {
