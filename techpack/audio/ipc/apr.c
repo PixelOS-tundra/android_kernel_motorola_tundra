@@ -1228,11 +1228,13 @@ static int apr_probe(struct platform_device *pdev)
 			ret = -EINVAL;
 			return ret;
 		}
-		rproc_phandle = adsp_np->phandle;
+		/* nothing references that node, so it has no phandle */
+		rproc_h = rproc_get_by_node(adsp_np);
 		of_node_put(adsp_np);
 	}
 
-	rproc_h = rproc_get_by_phandle(rproc_phandle);
+	if (rproc_phandle)
+		rproc_h = rproc_get_by_phandle(rproc_phandle);
 	if (!rproc_h) {
 		dev_info_ratelimited(&pdev->dev, "remotproc handle NULL\n");
 		ret = -EPROBE_DEFER;
