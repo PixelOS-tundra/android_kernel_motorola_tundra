@@ -24,6 +24,12 @@
 /* No upper/lower limit requirement */
 #define THERMAL_NO_LIMIT	((u32)~0)
 
+/*
+ * QTI device trees use THERMAL_MAX_LIMIT - n as a cooling limit to mean
+ * "n states below the cooling device's max_state".
+ */
+#define THERMAL_MAX_LIMIT	(THERMAL_NO_LIMIT - 1)
+
 /* Default weight of a bound cooling device */
 #define THERMAL_WEIGHT_DEFAULT 0
 
@@ -34,6 +40,7 @@ struct thermal_zone_device;
 struct thermal_cooling_device;
 struct thermal_instance;
 struct thermal_attr;
+struct thermal_of_group;
 
 enum thermal_trend {
 	THERMAL_TREND_STABLE, /* temperature is stable */
@@ -159,6 +166,7 @@ struct thermal_cooling_device {
  * @node:	node in thermal_tz_list (in thermal_core.c)
  * @poll_queue:	delayed work for polling
  * @notify_event: Last notification event
+ * @of_group:	zones of the device tree that share this zone's sensor
  */
 struct thermal_zone_device {
 	int id;
@@ -192,6 +200,7 @@ struct thermal_zone_device {
 	struct list_head node;
 	struct delayed_work poll_queue;
 	enum thermal_notify_event notify_event;
+	struct thermal_of_group *of_group;
 
 	ANDROID_KABI_RESERVE(1);
 };
