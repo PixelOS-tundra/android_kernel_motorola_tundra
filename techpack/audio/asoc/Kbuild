@@ -237,7 +237,7 @@ ifdef CONFIG_SND_SOC_QDSP6V2
 	PLATFORM_OBJS += msm-pcm-afe-v2.o
 	PLATFORM_OBJS += msm-pcm-dtmf-v2.o
 	PLATFORM_OBJS += msm-pcm-hostless.o
-#	PLATFORM_OBJS += msm-pcm-host-voice-v2.o
+	PLATFORM_OBJS += msm-pcm-host-voice-v2.o
 	PLATFORM_OBJS += msm-pcm-loopback-v2.o
 ifndef CONFIG_SND_SOC_SA410M
 	PLATFORM_OBJS += msm-pcm-q6-noirq.o
