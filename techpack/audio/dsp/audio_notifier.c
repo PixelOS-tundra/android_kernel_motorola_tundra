@@ -179,7 +179,9 @@ static int audio_notifier_reg_service(int service, int domain)
 
 	switch (service) {
 	case AUDIO_NOTIFIER_SSR_SERVICE:
-		handle = audio_ssr_legacy_register("lpass",
+		/* the lahaina ADSP registers its SSR notifier as "adsp" */
+		handle = audio_ssr_legacy_register(
+			qcom_rproc_get_pil_tz_generic("adsp") ? "adsp" : "lpass",
 			service_data[service][domain].hook.nb);
 		break;
 	case AUDIO_NOTIFIER_PDR_SERVICE:
@@ -624,13 +626,13 @@ static int audio_notify_probe(struct platform_device *pdev)
 
 	if (!of_machine_is_compatible(qcom_quinvm)) {
 		prop = of_find_property(pdev->dev.of_node, "qcom,rproc-handle", &size);
-		if (!prop) {
-			dev_err(&pdev->dev, "Missing remoteproc handle\n");
-			return ret;
+		if (prop) {
+			rproc_phandle = be32_to_cpup(prop->value);
+			priv->rproc_h = rproc_get_by_phandle(rproc_phandle);
+		} else {
+			/* 5.4 lahaina DT: no adsp-notify node, 5.4 PIL ADSP */
+			priv->rproc_h = qcom_rproc_get_pil_tz_generic("adsp");
 		}
-		rproc_phandle = be32_to_cpup(prop->value);
-
-		priv->rproc_h = rproc_get_by_phandle(rproc_phandle);
 		if (!priv->rproc_h) {
 			dev_err(&pdev->dev, "remoteproc handle NULL\n");
 			ret = -EPROBE_DEFER;
@@ -674,7 +676,30 @@ static struct platform_driver adsp_notify_driver = {
 
 static int __init audio_notifier_init(void)
 {
-	return platform_driver_register(&adsp_notify_driver);
+	struct device_node *np;
+	struct platform_device *pdev;
+	int ret;
+
+	ret = platform_driver_register(&adsp_notify_driver);
+	if (ret)
+		return ret;
+
+	/*
+	 * The 5.4 lahaina DT has no qcom,adsp-notify node; 5.4 set the
+	 * notifier up unconditionally. Bind the driver by name instead.
+	 */
+	np = of_find_compatible_node(NULL, NULL, "qcom,adsp-notify");
+	if (np) {
+		of_node_put(np);
+		return 0;
+	}
+
+	pdev = platform_device_register_simple("adsp-notify", -1, NULL, 0);
+	if (IS_ERR(pdev))
+		pr_err("%s: adsp-notify device failed: %ld\n", __func__,
+		       PTR_ERR(pdev));
+
+	return 0;
 }
 module_init(audio_notifier_init);
 
