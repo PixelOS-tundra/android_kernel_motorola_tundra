@@ -19150,6 +19150,38 @@ static int hdd_disable_wifi(struct hdd_context *hdd_ctx)
 }
 #endif /* FEATURE_CNSS_HW_SECURE_DISABLE */
 
+#ifndef MODULE
+/**
+ * hdd_load_on_first_use() - Load the built-in driver on the first "ON" write
+ *
+ * The Wi-Fi HAL writes to /dev/wlan once userspace is up, so the firmware,
+ * ini and MAC address files can be read by then. Nothing writes the boot_wlan
+ * sysfs node on this platform.
+ *
+ * Return: 0 on success, errno on failure
+ */
+static int hdd_load_on_first_use(void)
+{
+	static DEFINE_MUTEX(load_lock);
+	static bool loaded;
+	int ret = 0;
+
+	mutex_lock(&load_lock);
+	if (!loaded) {
+		ret = hdd_driver_load();
+		loaded = !ret;
+	}
+	mutex_unlock(&load_lock);
+
+	return ret;
+}
+#else
+static inline int hdd_load_on_first_use(void)
+{
+	return 0;
+}
+#endif
+
 static ssize_t wlan_hdd_state_ctrl_param_write(struct file *filp,
 						const char __user *user_buf,
 						size_t count,
@@ -19203,6 +19235,12 @@ static ssize_t wlan_hdd_state_ctrl_param_write(struct file *filp,
 	default:
 		hdd_err_rl("Invalid value received from framework");
 		return -EINVAL;
+	}
+
+	ret = hdd_load_on_first_use();
+	if (ret) {
+		hdd_err("Failed to load the driver: %d", ret);
+		return ret;
 	}
 
 	hdd_info("is_driver_loaded %d is_driver_recovering %d",
@@ -20472,11 +20510,13 @@ int hdd_driver_load(void)
 	if (soft_load)
 		goto out;
 
+#ifdef MODULE
 	errno = wlan_hdd_state_ctrl_param_create();
 	if (errno) {
 		hdd_err("Failed to create ctrl param; errno:%d", errno);
 		goto unregister_driver;
 	}
+#endif
 	hdd_create_wifi_feature_interface();
 out:
 	hdd_debug("%s: driver loaded", WLAN_MODULE_NAME);
@@ -20484,8 +20524,10 @@ out:
 
 	return 0;
 
+#ifdef MODULE
 unregister_driver:
 	wlan_hdd_unregister_driver();
+#endif
 pld_deinit:
 	status = osif_driver_sync_trans_start(&driver_sync);
 	QDF_BUG(QDF_IS_STATUS_SUCCESS(status));
@@ -20795,8 +20837,15 @@ static int __init hdd_module_init(void)
 	int ret = -EINVAL;
 
 	ret = wlan_init_sysfs();
-	if (ret)
+	if (ret) {
 		hdd_err("Failed to create sysfs entry");
+		return ret;
+	}
+
+	/* /dev/wlan comes first here: its "ON" write loads the driver */
+	ret = wlan_hdd_state_ctrl_param_create();
+	if (ret)
+		hdd_err("Failed to create ctrl param; errno:%d", ret);
 
 	return ret;
 }
