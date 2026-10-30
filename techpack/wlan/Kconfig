@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config QTI_WLAN_LAHAINA
+	bool "QCA6490 WLAN for lahaina"
+	depends on ARCH_QCOM
+	help
+	  Build the CNSS platform drivers and the qcacld-3.0 WLAN host driver
+	  from techpack/wlan into the kernel.
+
+if QTI_WLAN_LAHAINA
+
+source "techpack/wlan/platform/cnss2/Kconfig"
+source "techpack/wlan/platform/cnss_genl/Kconfig"
+source "techpack/wlan/platform/cnss_prealloc/Kconfig"
+source "techpack/wlan/platform/cnss_utils/Kconfig"
+
+config QCA_CLD_WLAN
+	tristate "Qualcomm Atheros CLD WLAN module"
+	help
+	  Add support for the Qualcomm Atheros CLD WLAN host driver. Its feature
+	  flags come from configs/qca6490_defconfig, not from Kconfig.
+
+endif

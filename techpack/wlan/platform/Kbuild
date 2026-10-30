@@ -1,3 +1,6 @@
+WLAN_PLATFORM_ROOT := $(srctree)/techpack/wlan/platform
+export WLAN_PLATFORM_ROOT
+
 ifeq ($(CONFIG_ARCH_PINEAPPLE), y)
 include \
 	$(WLAN_PLATFORM_ROOT)/cnss2/pineapple_gki_defconfig \
