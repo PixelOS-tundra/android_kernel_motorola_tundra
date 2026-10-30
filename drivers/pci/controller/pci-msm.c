@@ -5299,8 +5299,12 @@ static void msm_pcie_config_controller(struct msm_pcie_dev_t *dev)
 static int msm_pcie_get_clk(struct msm_pcie_dev_t *pcie_dev)
 {
 	struct platform_device *pdev = pcie_dev->pdev;
+	struct device_node *of_node = pdev->dev.of_node;
+	const char *legacy_pipe = NULL, *legacy_ref = NULL;
 	u32 *clk_freq = NULL, *clk_suppressible = NULL;
+	u32 legacy_ref_freq = 0;
 	int ret, i, total_num_clk;
+	bool legacy;
 	struct clk_bulk_data *bulk_clks;
 	struct msm_pcie_clk_info_t *clk;
 
@@ -5315,14 +5319,27 @@ static int msm_pcie_get_clk(struct msm_pcie_dev_t *pcie_dev)
 
 	total_num_clk = ret;
 
-	ret = of_property_count_elems_of_size(pdev->dev.of_node,
-					      "clock-frequency",
-					      sizeof(*clk_freq));
-	if (ret != total_num_clk) {
-		PCIE_ERR(pcie_dev,
-			 "PCIe: RC%d: mismatch between number of clock and frequency entries: %d != %d\n",
-			 pcie_dev->rc_idx, total_num_clk, ret);
-		return -EIO;
+	/*
+	 * The 5.4 binding has no per-clock suppressible flags. It names the
+	 * clocks after the RC, and max-clock-frequency-hz is indexed by that
+	 * driver's fixed tables rather than by clock-names, with the reference
+	 * clock source in cell 2 as the only entry that applies to the listed
+	 * clocks.
+	 */
+	legacy = !of_find_property(of_node, "clock-suppressible", NULL) &&
+		 of_find_property(of_node, "max-clock-frequency-hz", NULL);
+	if (legacy) {
+		legacy_pipe = devm_kasprintf(&pdev->dev, GFP_KERNEL,
+					     "pcie_%d_pipe_clk",
+					     pcie_dev->rc_idx);
+		legacy_ref = devm_kasprintf(&pdev->dev, GFP_KERNEL,
+					    "pcie_%d_ref_clk_src",
+					    pcie_dev->rc_idx);
+		if (!legacy_pipe || !legacy_ref)
+			return -ENOMEM;
+
+		of_property_read_u32_index(of_node, "max-clock-frequency-hz",
+					   2, &legacy_ref_freq);
 	}
 
 	/* get clock frequency info */
@@ -5331,39 +5348,51 @@ static int msm_pcie_get_clk(struct msm_pcie_dev_t *pcie_dev)
 	if (!clk_freq)
 		return -ENOMEM;
 
-	ret = of_property_read_u32_array(pdev->dev.of_node, "clock-frequency",
-					 clk_freq, total_num_clk);
-	if (ret) {
-		PCIE_ERR(pcie_dev,
-			 "PCIe: RC%d: failed to get clock frequencies: ret: %d\n",
-			 pcie_dev->rc_idx, ret);
-		goto out;
-	}
-
-	ret = of_property_count_elems_of_size(pdev->dev.of_node,
-					      "clock-suppressible",
-					      sizeof(*clk_suppressible));
-	if (ret != total_num_clk) {
-		PCIE_ERR(pcie_dev,
-			 "PCIe: RC%d: mismatch between number of clock and suppressible entries: %d != %d\n",
-			 pcie_dev->rc_idx, total_num_clk, ret);
-		return -EIO;
-	}
-
 	/* get clock suppressible info */
 	clk_suppressible = devm_kcalloc(&pdev->dev, total_num_clk,
 					sizeof(*clk_suppressible), GFP_KERNEL);
 	if (!clk_suppressible)
 		return -ENOMEM;
 
-	ret = of_property_read_u32_array(pdev->dev.of_node,
-					 "clock-suppressible",
-					 clk_suppressible, total_num_clk);
-	if (ret) {
-		PCIE_ERR(pcie_dev,
-			 "PCIe: RC%d: failed to get clock suppressible info: ret: %d\n",
-			 pcie_dev->rc_idx, ret);
-		goto out;
+	if (!legacy) {
+		ret = of_property_count_elems_of_size(of_node,
+						      "clock-frequency",
+						      sizeof(*clk_freq));
+		if (ret != total_num_clk) {
+			PCIE_ERR(pcie_dev,
+				 "PCIe: RC%d: mismatch between number of clock and frequency entries: %d != %d\n",
+				 pcie_dev->rc_idx, total_num_clk, ret);
+			return -EIO;
+		}
+
+		ret = of_property_read_u32_array(of_node, "clock-frequency",
+						 clk_freq, total_num_clk);
+		if (ret) {
+			PCIE_ERR(pcie_dev,
+				 "PCIe: RC%d: failed to get clock frequencies: ret: %d\n",
+				 pcie_dev->rc_idx, ret);
+			goto out;
+		}
+
+		ret = of_property_count_elems_of_size(of_node,
+						      "clock-suppressible",
+						      sizeof(*clk_suppressible));
+		if (ret != total_num_clk) {
+			PCIE_ERR(pcie_dev,
+				 "PCIe: RC%d: mismatch between number of clock and suppressible entries: %d != %d\n",
+				 pcie_dev->rc_idx, total_num_clk, ret);
+			return -EIO;
+		}
+
+		ret = of_property_read_u32_array(of_node, "clock-suppressible",
+						 clk_suppressible,
+						 total_num_clk);
+		if (ret) {
+			PCIE_ERR(pcie_dev,
+				 "PCIe: RC%d: failed to get clock suppressible info: ret: %d\n",
+				 pcie_dev->rc_idx, ret);
+			goto out;
+		}
 	}
 
 	/* setup array of PCIe clock info */
@@ -5379,6 +5408,11 @@ static int msm_pcie_get_clk(struct msm_pcie_dev_t *pcie_dev)
 		clk->hdl = bulk_clks->clk;
 		clk->freq = *clk_freq++;
 		clk->suppressible = *clk_suppressible++;
+
+		if (legacy && !strcmp(clk->name, legacy_pipe))
+			clk->name = "pcie_pipe_clk";
+		else if (legacy && !strcmp(clk->name, legacy_ref))
+			clk->freq = legacy_ref_freq;
 
 		PCIE_DBG(pcie_dev,
 			 "PCIe: RC%d: %s: frequency: %d: suppressible: %d\n",
@@ -5405,7 +5439,9 @@ static int msm_pcie_get_clk(struct msm_pcie_dev_t *pcie_dev)
 
 	pcie_dev->num_clk = total_num_clk - pcie_dev->num_pipe_clk;
 
-	pcie_dev->rate_change_clk = clk_get(&pdev->dev, "pcie_rate_change_clk");
+	pcie_dev->rate_change_clk = clk_get(&pdev->dev, legacy ?
+					    "pcie_phy_refgen_clk" :
+					    "pcie_rate_change_clk");
 	if (IS_ERR(pcie_dev->rate_change_clk)) {
 		PCIE_DBG(pcie_dev,
 			 "PCIe: RC%d: pcie_rate_change_clk is not present\n",
@@ -5439,7 +5475,8 @@ static int msm_pcie_get_clk(struct msm_pcie_dev_t *pcie_dev)
 	if (IS_ERR(pcie_dev->phy_aux_clk_ext_src))
 		pcie_dev->phy_aux_clk_ext_src = NULL;
 
-	pcie_dev->ref_clk_src = clk_get(&pdev->dev, "pcie_ref_clk_src");
+	pcie_dev->ref_clk_src = clk_get(&pdev->dev, legacy ? legacy_ref :
+					"pcie_ref_clk_src");
 	if (IS_ERR(pcie_dev->ref_clk_src)) {
 		PCIE_DBG(pcie_dev,
 			 "PCIe: RC%d: pcie_ref_clk_src is not present\n",
@@ -5470,6 +5507,16 @@ static int msm_pcie_get_vreg(struct msm_pcie_dev_t *pcie_dev)
 
 		vreg_info->hdl = devm_regulator_get_optional(&pdev->dev,
 						vreg_info->name);
+
+		/* lahaina names its 1.2 V PCIe rail vreg-1p8, with the real
+		 * levels in qcom,vreg-1p8-voltage-level
+		 */
+		if (PTR_ERR(vreg_info->hdl) == -ENODEV &&
+		    !strcmp(vreg_info->name, "vreg-1p2")) {
+			vreg_info->name = "vreg-1p8";
+			vreg_info->hdl = devm_regulator_get_optional(&pdev->dev,
+							vreg_info->name);
+		}
 
 		if (PTR_ERR(vreg_info->hdl) == -EPROBE_DEFER) {
 			PCIE_DBG(pcie_dev, "EPROBE_DEFER for VReg:%s\n",
@@ -5512,7 +5559,13 @@ static int msm_pcie_get_vreg(struct msm_pcie_dev_t *pcie_dev)
 		}
 	}
 
-	pcie_dev->gdsc_core = devm_regulator_get(&pdev->dev, "gdsc-core-vdd");
+	/* the 5.4 DTs name the PCIe core GDSC gdsc-vdd */
+	if (!of_find_property(pdev->dev.of_node, "gdsc-core-vdd-supply", NULL) &&
+	    of_find_property(pdev->dev.of_node, "gdsc-vdd-supply", NULL))
+		pcie_dev->gdsc_core = devm_regulator_get(&pdev->dev, "gdsc-vdd");
+	else
+		pcie_dev->gdsc_core = devm_regulator_get(&pdev->dev,
+							 "gdsc-core-vdd");
 
 	if (IS_ERR(pcie_dev->gdsc_core)) {
 		PCIE_ERR(pcie_dev, "PCIe: RC%d: Failed to get %s GDSC-CORE:%ld\n",
