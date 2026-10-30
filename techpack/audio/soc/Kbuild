@@ -184,8 +184,8 @@ LINUX_INC +=	-Iinclude/linux
 
 INCS +=		$(COMMON_INC) \
 		$(UAPI_INC) \
-		-I$(KERNEL_SRC)/drivers/pinctrl \
-		-I$(KERNEL_SRC)/drivers/base/regmap
+		-I$(srctree)/drivers/pinctrl \
+		-I$(srctree)/drivers/base/regmap
 
 EXTRA_CFLAGS += $(INCS)
 

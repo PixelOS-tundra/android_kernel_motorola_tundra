@@ -12009,7 +12009,7 @@ static int msm_dai_q6_tdm_prepare(struct snd_pcm_substream *substream,
 		dev_get_drvdata(dai->dev);
 	u16 group_id = dai_data->group_cfg.tdm_cfg.group_id;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	int index = rtd->cpu_dai->id;
+	int index = asoc_rtd_to_cpu(rtd, 0)->id;
 	int sample_rate = dai_data->rate;
 	int group_idx = 0;
 	atomic_t *group_ref = NULL;
@@ -12134,7 +12134,7 @@ static void msm_dai_q6_tdm_shutdown(struct snd_pcm_substream *substream,
 	atomic_t *group_ref = NULL;
 	int intf_idx =  PORT_ID_TO_INTF_IDX(dai->id);
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	int index = cpu_dai->id;
 	int sample_rate = dai_data->rate;
 

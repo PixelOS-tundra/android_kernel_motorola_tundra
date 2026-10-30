@@ -242,7 +242,7 @@ INCS +=		$(COMMON_INC) \
 		$(UAPI_INC)
 
 EXTRA_CFLAGS += $(INCS)
-EXTRA_CFLAGS += $(KERNEL_SRC)/drivers/pinctrl/
+EXTRA_CFLAGS += -I$(srctree)/drivers/pinctrl/
 
 CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
 		-DANI_LITTLE_BIT_ENDIAN \

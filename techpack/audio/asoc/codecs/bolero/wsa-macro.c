@@ -150,7 +150,8 @@ static int wsa_macro_hw_params(struct snd_pcm_substream *substream,
 static int wsa_macro_get_channel_map(struct snd_soc_dai *dai,
 				unsigned int *tx_num, unsigned int *tx_slot,
 				unsigned int *rx_num, unsigned int *rx_slot);
-static int wsa_macro_digital_mute(struct snd_soc_dai *dai, int mute);
+static int wsa_macro_digital_mute(struct snd_soc_dai *dai, int mute,
+				  int stream);
 /* Hold instance to soundwire platform device */
 struct wsa_macro_swr_ctrl_data {
 	struct platform_device *wsa_swr_pdev;
@@ -388,7 +389,8 @@ static const struct snd_kcontrol_new rx_mix_ec1_mux =
 static struct snd_soc_dai_ops wsa_macro_dai_ops = {
 	.hw_params = wsa_macro_hw_params,
 	.get_channel_map = wsa_macro_get_channel_map,
-	.digital_mute = wsa_macro_digital_mute,
+	.mute_stream = wsa_macro_digital_mute,
+	.no_capture_mute = 1,
 };
 
 static struct snd_soc_dai_driver wsa_macro_dai[] = {
@@ -845,7 +847,8 @@ static int wsa_macro_get_channel_map(struct snd_soc_dai *dai,
 	return 0;
 }
 
-static int wsa_macro_digital_mute(struct snd_soc_dai *dai, int mute)
+static int wsa_macro_digital_mute(struct snd_soc_dai *dai, int mute,
+				  int stream)
 {
 	struct snd_soc_component *component = dai->component;
 	struct device *wsa_dev = NULL;
