@@ -397,17 +397,15 @@ err:
 	return ret;
 }
 
-int nfc_i2c_dev_remove(struct i2c_client *client)
+void nfc_i2c_dev_remove(struct i2c_client *client)
 {
-	int ret = 0;
 	struct nfc_dev *nfc_dev = NULL;
 
 	pr_info("%s: remove device\n", __func__);
 	nfc_dev = i2c_get_clientdata(client);
 	if (!nfc_dev) {
 		pr_err("%s: device doesn't exist anymore\n", __func__);
-		ret = -ENODEV;
-		return ret;
+		return;
 	}
 
 	gpio_set_value(nfc_dev->gpio.ven, 0);
@@ -437,7 +435,6 @@ int nfc_i2c_dev_remove(struct i2c_client *client)
 		gpio_free(nfc_dev->gpio.ven);
 
 	kfree(nfc_dev);
-	return ret;
 }
 
 int nfc_i2c_dev_suspend(struct device *device)
