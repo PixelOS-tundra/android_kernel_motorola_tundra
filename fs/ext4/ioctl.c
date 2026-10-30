@@ -26,6 +26,7 @@
 #include <linux/fsmap.h>
 #include "fsmap.h"
 #include <trace/events/ext4.h>
+#include <linux/k61-stop.h>
 
 typedef void ext4_update_sb_callback(struct ext4_super_block *es,
 				       const void *arg);
@@ -1479,6 +1480,13 @@ resizefs_out:
 
 		if (!bdev_max_discard_sectors(sb->s_bdev))
 			return -EOPNOTSUPP;
+
+		/*
+		 * DEBUG (k61.stop): the guards mount /metadata and persist
+		 * read-only, and their discards would trip the bio barrier.
+		 */
+		if (k61_stop_init && sb_rdonly(sb))
+			return -EROFS;
 
 		/*
 		 * We haven't replayed the journal, so we cannot use our
