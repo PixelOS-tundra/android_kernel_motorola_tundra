@@ -1,5 +1,9 @@
 # auto-detect subdirs
-ifeq ($(QTI_TECHPACK_KERNEL_6_1), true)
+ifeq ($(CONFIG_QTI_AUDIO_LAHAINA), y)
+# built into the kernel from techpack/audio
+LEGACY_PATH=$(srctree)/techpack/audio
+CONFIG_ARCH_LAHAINA := y
+else ifeq ($(QTI_TECHPACK_KERNEL_6_1), true)
 LEGACY_PATH=$(PWD)/../../../../vendor/qcom/opensource/audio-kernel
 else
 ifeq ($(QTI_TECHPACK), true)
