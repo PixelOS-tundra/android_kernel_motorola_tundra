@@ -2812,18 +2812,28 @@ static int haptics_upload_effect(struct input_dev *dev,
 	}
 
 	rc = haptics_wait_hboost_ready(chip);
-	if (rc < 0 && chip->play.pattern_src == FIFO) {
+	if (rc < 0) {
+		if (chip->play.pattern_src == FIFO) {
+			/*
+			 * Call haptics_stop_fifo_play(chip) explicitly if
+			 * hBoost is not ready for the FIFO play. This drops
+			 * current FIFO play but it restores the SW back to
+			 * initial status so that the following FIFO play
+			 * requests can still be served.
+			 */
+			dev_dbg(chip->dev, "stop FIFO play explicitly to restore SW status\n");
+			mutex_lock(&chip->play.lock);
+			haptics_stop_fifo_play(chip);
+			mutex_unlock(&chip->play.lock);
+		}
+
 		/*
-		 * Call haptics_stop_fifo_play(chip) explicitly if hBoost is
-		 * not ready for the FIFO play. This drops current FIFO play
-		 * but it restores the SW back to initial status so that the
-		 * following FIFO play requests can still be served.
+		 * Play a full amplitude constant effect instead of dropping
+		 * the request while hBoost stays busy.
 		 */
-		dev_dbg(chip->dev, "stop FIFO play explicitly to restore SW status\n");
-		mutex_lock(&chip->play.lock);
-		haptics_stop_fifo_play(chip);
-		mutex_unlock(&chip->play.lock);
-		return rc;
+		dev_dbg(chip->dev, "hBoost busy, play a constant effect instead\n");
+		return haptics_load_constant_effect(chip,
+				DIRECT_PLAY_MAX_AMPLITUDE);
 	}
 
 	return 0;
