@@ -1231,10 +1231,8 @@ static struct msm_dai_stream_aif_name msm_dai_q6_dai_stream_aif_names[] = {
 	{"Secondary SPDIF Capture","SEC_SPDIF_TX"},
 	{"AFE Playback","PCM_RX"},
 	{"AFE Capture", "PCM_TX"},
-	{"AFE-PROXY RX","AFE Playback1"},
-	{"PCM_RX1","AFE Loopback Capture"},
-	{"AFE_LOOPBACK_TX","AFE Capture"},
-	{"PCM_TX","AFE-PROXY TX"},
+	{"AFE Playback1","PCM_RX1"},
+	{"AFE Loopback Capture","AFE_LOOPBACK_TX"},
 	{"Internal BT-SCO Playback","INT_BT_SCO_RX"},
 	{"Internal BT-A2DP Playback","INT_BT_A2DP_RX"},
 	{"Internal BT-SCO Capture","INT_BT_SCO_TX"},
@@ -1279,7 +1277,7 @@ static struct msm_dai_stream_aif_name msm_dai_q6_dai_stream_aif_names[] = {
 	{"Quinary MI2S Playback","QUIN_MI2S_RX"},
 	{"Quinary MI2S Capture","QUIN_MI2S_TX"},
 	{"Senary MI2S Playback","SEN_MI2S_RX"},
-	{"Senary MI2S Capture","SENARY_MI2S_TX"},
+	{"Senary MI2S Capture","SEN_MI2S_TX"},
 	{"Secondary MI2S Playback SD1","SEC_MI2S_RX_SD1"},
 	{"INT0 MI2S Playback","INT0_MI2S_RX"},
 	{"INT0 MI2S Capture","INT0_MI2S_TX"},
@@ -6992,7 +6990,6 @@ static struct snd_soc_dai_driver msm_dai_q6_mi2s_dai[] = {
 	{
 		.capture = {
 			.stream_name = "Senary MI2S Capture",
-			.aif_name = "SEN_MI2S_TX",
 			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 			SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
