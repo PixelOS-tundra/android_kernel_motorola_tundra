@@ -2985,6 +2985,43 @@ static int geni_i2c_resources_init(struct platform_device *pdev, struct geni_i2c
 
 	return 0;
 }
+/*
+ * The stock lahaina DT has no i2c aliases, so the bus numbers come from the
+ * probe order. Device names that depend on them are fixed in that DT (the
+ * sound card's asoc-codec-names has "aw882xxacf_smartpa.3-0034"), so give the
+ * 5.4-layout buses (no alias, wrapper through qcom,wrapper-core) the numbers
+ * they had on the 5.4 kernel.
+ */
+static const struct {
+	resource_size_t base;
+	int nr;
+} geni_i2c_legacy_nr[] = {
+	{ 0xa80000, 0 },	/* QUP1 SE8: fsa4480, sx937x */
+	{ 0xa94000, 1 },	/* QUP1 SE13: wl2864c, ps5169, nq */
+	{ 0x884000, 2 },	/* QUP2 SE1: NFC */
+	{ 0x88c000, 3 },	/* QUP2 SE3: aw882xx smart PAs */
+};
+
+static int geni_i2c_legacy_bus_nr(struct platform_device *pdev)
+{
+	struct resource *res;
+	int i;
+
+	if (of_alias_get_id(pdev->dev.of_node, "i2c") >= 0 ||
+	    !of_property_read_bool(pdev->dev.of_node, "qcom,wrapper-core"))
+		return -1;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res)
+		return -1;
+
+	for (i = 0; i < ARRAY_SIZE(geni_i2c_legacy_nr); i++)
+		if (res->start == geni_i2c_legacy_nr[i].base)
+			return geni_i2c_legacy_nr[i].nr;
+
+	return -1;
+}
+
 static int geni_i2c_probe(struct platform_device *pdev)
 {
 	struct geni_i2c_dev *gi2c;
@@ -3137,7 +3174,17 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		pm_runtime_use_autosuspend(gi2c->dev);
 	}
 	pm_runtime_enable(gi2c->dev);
-	ret = i2c_add_adapter(&gi2c->adap);
+	gi2c->adap.nr = geni_i2c_legacy_bus_nr(pdev);
+	if (gi2c->adap.nr >= 0) {
+		ret = i2c_add_numbered_adapter(&gi2c->adap);
+		if (ret == -EBUSY) {
+			dev_warn(gi2c->dev, "bus %d taken, numbering dynamically\n",
+				 gi2c->adap.nr);
+			ret = i2c_add_adapter(&gi2c->adap);
+		}
+	} else {
+		ret = i2c_add_adapter(&gi2c->adap);
+	}
 	if (ret) {
 		dev_err(gi2c->dev, "Add adapter failed, ret=%d\n", ret);
 		return ret;
