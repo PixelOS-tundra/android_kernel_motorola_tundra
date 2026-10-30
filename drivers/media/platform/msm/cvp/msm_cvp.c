@@ -1331,6 +1331,7 @@ static int msm_cvp_session_ctrl(struct msm_cvp_inst *inst,
 		break;
 	case SESSION_CREATE:
 		rc = msm_cvp_session_create(inst);
+		fallthrough;
 	case SESSION_DELETE:
 		break;
 	case SESSION_INFO:

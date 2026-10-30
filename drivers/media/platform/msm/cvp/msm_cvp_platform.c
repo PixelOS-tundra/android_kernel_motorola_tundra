@@ -16,6 +16,7 @@
 #include <linux/version.h>
 #include <linux/io.h>
 #include <linux/of_fdt.h>
+#include <soc/qcom/of_common.h>
 #include "msm_cvp_internal.h"
 #include "msm_cvp_debug.h"
 

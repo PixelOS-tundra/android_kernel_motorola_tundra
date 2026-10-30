@@ -238,15 +238,10 @@ struct dentry *msm_cvp_debugfs_init_drv(void)
 		goto failed_create_dir;
 	}
 
+/* debugfs_create_x32/u32/bool() return nothing since 5.5 */
 #define __debugfs_create(__type, __name, __value) ({                          \
-	struct dentry *f = debugfs_create_##__type(__name, 0644,	\
-		dir, __value);                                                \
-	if (IS_ERR_OR_NULL(f)) {                                              \
-		dprintk(CVP_ERR, "Failed creating debugfs file '%pd/%s'\n",  \
-			dir, __name);                                         \
-		f = NULL;                                                     \
-	}                                                                     \
-	f;                                                                    \
+	debugfs_create_##__type(__name, 0644, dir, __value);                  \
+	true;                                                                 \
 })
 
 	ok =
