@@ -13,24 +13,101 @@
 
 #define DRV_NAME "msm-pcm-hostless"
 
-static int msm_pcm_hostless_prepare(struct snd_pcm_substream *substream)
+#define PLAYBACK_MIN_NUM_PERIODS    2
+#define PLAYBACK_MAX_NUM_PERIODS    8
+#define PLAYBACK_MAX_PERIOD_SIZE    122880
+#define PLAYBACK_MIN_PERIOD_SIZE    120
+#define CAPTURE_MIN_NUM_PERIODS     2
+#define CAPTURE_MAX_NUM_PERIODS     8
+#define CAPTURE_MAX_PERIOD_SIZE     122880
+#define CAPTURE_MIN_PERIOD_SIZE     120
+
+
+static struct snd_pcm_hardware msm_pcm_hardware_capture = {
+	.info =                 (SNDRV_PCM_INFO_MMAP |
+				SNDRV_PCM_INFO_BLOCK_TRANSFER |
+				SNDRV_PCM_INFO_MMAP_VALID |
+				SNDRV_PCM_INFO_INTERLEAVED |
+				SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME),
+	.formats =  SNDRV_PCM_FMTBIT_S16_LE,
+	.rates =                SNDRV_PCM_RATE_8000_384000,
+	.rate_min =             8000,
+	.rate_max =             384000,
+	.channels_min =         1,
+	.channels_max =         8,
+	.buffer_bytes_max =     CAPTURE_MAX_NUM_PERIODS *
+				CAPTURE_MAX_PERIOD_SIZE,
+	.period_bytes_min =     CAPTURE_MIN_PERIOD_SIZE,
+	.period_bytes_max =     CAPTURE_MAX_PERIOD_SIZE,
+	.periods_min =          CAPTURE_MIN_NUM_PERIODS,
+	.periods_max =          CAPTURE_MAX_NUM_PERIODS,
+	.fifo_size =            0,
+};
+
+static struct snd_pcm_hardware msm_pcm_hardware_playback = {
+	.info =                 (SNDRV_PCM_INFO_MMAP |
+				SNDRV_PCM_INFO_BLOCK_TRANSFER |
+				SNDRV_PCM_INFO_MMAP_VALID |
+				SNDRV_PCM_INFO_INTERLEAVED |
+				SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME),
+	.formats =  SNDRV_PCM_FMTBIT_S16_LE,
+	.rates =                SNDRV_PCM_RATE_8000_384000,
+	.rate_min =             8000,
+	.rate_max =             384000,
+	.channels_min =         1,
+	.channels_max =         8,
+	.buffer_bytes_max =     PLAYBACK_MAX_NUM_PERIODS *
+				PLAYBACK_MAX_PERIOD_SIZE,
+	.period_bytes_min =     PLAYBACK_MIN_PERIOD_SIZE,
+	.period_bytes_max =     PLAYBACK_MAX_PERIOD_SIZE,
+	.periods_min =          PLAYBACK_MIN_NUM_PERIODS,
+	.periods_max =          PLAYBACK_MAX_NUM_PERIODS,
+	.fifo_size =            0,
+};
+
+static int msm_pcm_open(struct snd_soc_component *component, struct snd_pcm_substream *substream)
 {
+	struct snd_pcm_runtime *runtime = substream->runtime;
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		runtime->hw = msm_pcm_hardware_playback;
+	/* Capture path */
+	else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+		runtime->hw = msm_pcm_hardware_capture;
+	else {
+		pr_err("Invalid Stream type %d\n", substream->stream);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int msm_pcm_close(struct snd_soc_component *component, struct snd_pcm_substream *substream)
+{
+	return 0;
+}
+
+static int msm_pcm_hostless_prepare(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
+{
+	struct snd_pcm_runtime *runtime = NULL;
+
 	if (!substream) {
 		pr_err("%s: invalid params\n", __func__);
 		return -EINVAL;
 	}
-	if (pm_qos_request_active(&substream->latency_pm_qos_req))
-		pm_qos_remove_request(&substream->latency_pm_qos_req);
+
+	runtime = substream->runtime;
+	runtime->stop_threshold = runtime->boundary;
+	cpu_latency_qos_remove_request(&substream->latency_pm_qos_req);
 	return 0;
 }
 
-static const struct snd_pcm_ops msm_pcm_hostless_ops = {
-	.prepare = msm_pcm_hostless_prepare
-};
 
 static struct snd_soc_component_driver msm_soc_hostless_component = {
 	.name		= DRV_NAME,
-	.ops		= &msm_pcm_hostless_ops,
+	.prepare 	= msm_pcm_hostless_prepare,
+	.open      	= msm_pcm_open,
+	.close     	= msm_pcm_close,
 };
 
 static int msm_pcm_hostless_probe(struct platform_device *pdev)

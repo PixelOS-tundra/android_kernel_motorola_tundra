@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/err.h>
@@ -11,7 +12,7 @@
 #include <dsp/q6core.h>
 #include <dsp/q6common.h>
 
-#include "msm-ds2-dap-config.h"
+#include <linux/msm-ds2-dap-config.h>
 #include "msm-pcm-routing-v2.h"
 
 
@@ -1399,6 +1400,7 @@ static int msm_ds2_dap_handle_commands(u32 cmd, void *arg)
 		dolby_data->device_id, dolby_data->length, data);
 
 	switch (dolby_data->param_id) {
+#if defined(CONFIG_DOLBY_DS2) || defined(CONFIG_DOLBY_LICENSE)
 	case DAP_CMD_COMMIT_ALL:
 		msm_ds2_dap_commit_params(dolby_data, 0);
 	break;
@@ -1457,6 +1459,7 @@ static int msm_ds2_dap_handle_commands(u32 cmd, void *arg)
 			goto end;
 		}
 	break;
+#endif
 	}
 end:
 	return ret;

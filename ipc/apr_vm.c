@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
 * Copyright (c) 2010-2014, 2016-2021 The Linux Foundation. All rights reserved.
+* Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
 */
 
 #include <linux/kernel.h>
@@ -22,7 +23,6 @@
 #include <linux/slab.h>
 #include <linux/ipc_logging.h>
 #include <linux/of_platform.h>
-#include <soc/qcom/subsystem_restart.h>
 #include <soc/snd_event.h>
 #include <dsp/apr_audio-v2.h>
 #include <dsp/audio_notifier.h>
@@ -281,6 +281,16 @@ static struct apr_svc_table svc_tbl_voice[] = {
 	},
 };
 
+static inline size_t memscpy(void *dst, size_t dst_size, const void *src,
+	size_t src_size)
+{
+	size_t min_size;
+
+	min_size = dst_size < src_size ? dst_size : src_size;
+	memcpy(dst, src, min_size);
+	return min_size;
+}
+
 /**
  * apr_get_modem_state:
  *
@@ -379,29 +389,6 @@ static void apr_adsp_up(void)
 		schedule_work(&apr_priv->add_chld_dev_work);
 	spin_unlock(&apr_priv->apr_lock);
 	snd_event_notify(apr_priv->dev, SND_EVENT_UP);
-}
-
-int apr_load_adsp_image(void)
-{
-	int rc = 0;
-
-	mutex_lock(&q6.lock);
-	if (apr_get_q6_state() == APR_SUBSYS_UP) {
-		q6.pil = subsystem_get("adsp");
-		if (IS_ERR(q6.pil)) {
-			rc = PTR_ERR(q6.pil);
-			pr_err("APR: Unable to load q6 image, error:%d\n", rc);
-		} else {
-			apr_set_q6_state(APR_SUBSYS_LOADED);
-			pr_debug("APR: Image is loaded, stated\n");
-		}
-	} else if (apr_get_q6_state() == APR_SUBSYS_LOADED) {
-		pr_debug("APR: q6 image already loaded\n");
-	} else {
-		pr_debug("APR: cannot load state %d\n", apr_get_q6_state());
-	}
-	mutex_unlock(&q6.lock);
-	return rc;
 }
 
 struct apr_client *apr_get_client(int dest_id, int client_id)
@@ -535,6 +522,11 @@ static int apr_vm_cb_process_evt(char *buf, int len)
 	pr_debug("%x %x %x %p %p\n", c_svc->id, c_svc->dest_id,
 		 c_svc->client_id, c_svc->fn, c_svc->priv);
 
+	if (hdr->pkt_size < hdr_size) {
+		pr_err("APR: invalid pkt_zie (%d), hdr_size: %d\n",
+					hdr->pkt_size, hdr_size);
+		return -EINVAL;
+	}
 	data.payload_size = hdr->pkt_size - hdr_size;
 	data.opcode = hdr->opcode;
 	data.src = src;
@@ -612,7 +604,7 @@ static int apr_vm_cb_thread(void *data)
 		ret = habmm_socket_send(hab_handle_rx,
 				(void *)&apr_ack,
 				sizeof(apr_ack),
-				0);
+				HABMM_SOCKET_SEND_FLAGS_NON_BLOCKING);
 #else
 		ret = status;
 #endif
@@ -669,7 +661,7 @@ static int apr_vm_get_svc(const char *svc_name, int domain_id, int *client_id,
 				ret = habmm_socket_send(hab_handle_tx,
 						(void *) &tx_data,
 						apr_len,
-						0);
+						HABMM_SOCKET_SEND_FLAGS_NON_BLOCKING);
 				if (ret) {
 					pr_err("%s: habmm_socket_send failed %d\n",
 						__func__, ret);
@@ -755,7 +747,7 @@ static int apr_vm_rel_svc(int domain_id, int svc_id, int handle)
 			ret = habmm_socket_send(hab_handle_tx,
 					(void *) &tx_data,
 					apr_len,
-					0);
+					HABMM_SOCKET_SEND_FLAGS_NON_BLOCKING);
 			if (ret)
 				pr_err("%s: habmm_socket_send failed %d\n",
 					__func__, ret);
@@ -886,12 +878,13 @@ int apr_send_pkt(void *handle, uint32_t *buf)
 		ret = -ENOMEM;
 		goto done;
 	}
-	memcpy(&apr_send->pkt_header, buf, hdr->pkt_size);
+	memscpy((void *)(&apr_send->pkt_header), APR_TX_BUF_SIZE-(sizeof(uint32_t)*2),
+			buf, hdr->pkt_size);
 
 	ret = habmm_socket_send(hab_handle_tx,
 			(void *)&apr_tx_buf,
 			apr_send_len,
-			0);
+			HABMM_SOCKET_SEND_FLAGS_NON_BLOCKING);
 	if (ret) {
 		pr_err("%s: habmm_socket_send failed %d\n",
 				__func__, ret);

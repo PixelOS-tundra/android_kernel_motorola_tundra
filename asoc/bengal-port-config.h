@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _BENGAL_PORT_CONFIG
@@ -62,6 +63,12 @@ static struct port_params tx_frame_params_wcd937x[SWR_MSTR_PORT_LEN] = {
 
 static struct swr_mstr_port_map sm_port_map[] = {
 	{VA_MACRO, SWR_UC0, tx_frame_params_wcd937x},
+	{RX_MACRO, SWR_UC0, rx_frame_params_default},
+	{RX_MACRO, SWR_UC1, rx_frame_params_dsd},
+};
+
+static struct swr_mstr_port_map sm_port_map_sa410[] = {
+	{VA_MACRO, SWR_UC0, tx_frame_params_default},
 	{RX_MACRO, SWR_UC0, rx_frame_params_default},
 	{RX_MACRO, SWR_UC1, rx_frame_params_dsd},
 };

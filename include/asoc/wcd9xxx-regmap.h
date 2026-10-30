@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _WCD9XXX_REGMAP_
@@ -19,6 +20,8 @@ extern struct regmap_config wcd9335_regmap_config;
 extern int wcd9335_regmap_register_patch(struct regmap *regmap,
 					 int version);
 
+extern struct regmap_config wcd9330_regmap_config;
+
 static inline struct regmap_config *wcd9xxx_get_regmap_config(int type)
 {
 	struct regmap_config *regmap_config;
@@ -29,6 +32,9 @@ static inline struct regmap_config *wcd9xxx_get_regmap_config(int type)
 		break;
 	case WCD9335:
 		regmap_config = &wcd9335_regmap_config;
+		break;
+	case WCD9330:
+		regmap_config = &wcd9330_regmap_config;
 		break;
 	default:
 		regmap_config = NULL;

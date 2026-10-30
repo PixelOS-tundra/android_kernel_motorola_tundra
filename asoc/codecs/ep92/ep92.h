@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __EP92_H__
@@ -154,6 +155,6 @@ enum {
 	EP92_KCTL_MAX
 };
 
-int ep92_set_ext_mclk(struct snd_soc_codec *codec, uint32_t mclk_freq);
+int ep92_set_ext_mclk(struct snd_soc_component *component, uint32_t mclk_freq);
 
 #endif /* __EP92_H__ */

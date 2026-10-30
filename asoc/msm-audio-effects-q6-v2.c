@@ -7,7 +7,7 @@
 #include <linux/slab.h>
 #include <linux/ratelimit.h>
 #include <sound/compress_params.h>
-#include <audio/sound/devdep_params.h>
+#include <sound/devdep_params.h>
 #include <dsp/apr_audio-v2.h>
 #include <dsp/q6asm-v2.h>
 #include <dsp/msm-audio-effects-q6-v2.h>
@@ -1064,6 +1064,78 @@ invalid_config:
 }
 EXPORT_SYMBOL(msm_audio_effects_pbe_handler);
 
+static int validate_and_parse_eq_config(struct eq_params *eq, long *values,
+					long *param_max_offset, int length, uint32_t *rc)
+{
+	uint32_t idx, j;
+
+	eq->config.eq_pregain = GET_NEXT(values, param_max_offset, *rc);
+	eq->config.preset_id = GET_NEXT(values, param_max_offset, *rc);
+	eq->config.num_bands = GET_NEXT(values, param_max_offset, *rc);
+
+	if (eq->config.num_bands > MAX_EQ_BANDS) {
+		pr_err("EQ_CONFIG:invalid num of bands\n");
+		*rc = -EINVAL;
+		return -EINVAL;
+	}
+	if (eq->config.num_bands &&
+		(((length - EQ_CONFIG_PARAM_LEN) /
+		EQ_CONFIG_PER_BAND_PARAM_LEN)
+		!= eq->config.num_bands)) {
+		pr_err("EQ_CONFIG:invalid length per band\n");
+		*rc = -EINVAL;
+		return -EINVAL;
+	}
+	for (j = 0; j < eq->config.num_bands; j++) {
+		idx = GET_NEXT(values, param_max_offset, *rc);
+		if (idx >= MAX_EQ_BANDS) {
+			pr_err("EQ_CONFIG:invalid band index\n");
+			*rc = -EINVAL;
+			return -EINVAL;
+		}
+		eq->per_band_cfg[idx].band_idx = idx;
+		eq->per_band_cfg[idx].filter_type = GET_NEXT(values, param_max_offset, *rc);
+		eq->per_band_cfg[idx].freq_millihertz = GET_NEXT(values, param_max_offset, *rc);
+		eq->per_band_cfg[idx].gain_millibels = GET_NEXT(values, param_max_offset, *rc);
+		eq->per_band_cfg[idx].quality_factor = GET_NEXT(values, param_max_offset, *rc);
+	}
+	return 0;
+}
+
+static int prepare_eq_config_data(struct eq_params *eq, u8 **eq_config_data,
+					int config_param_length, int *prev_config_param_length)
+{
+	u32 *updt_config_data;
+	int idx;
+
+	if (!(*eq_config_data))
+		*eq_config_data = kzalloc(config_param_length, GFP_KERNEL);
+	else if (config_param_length != *prev_config_param_length) {
+		kfree(*eq_config_data);
+		*eq_config_data = kzalloc(config_param_length, GFP_KERNEL);
+	} else
+		memset(*eq_config_data, 0, config_param_length);
+
+	if (!(*eq_config_data))
+		return  -ENOMEM;
+
+	updt_config_data = (u32 *)(*eq_config_data);
+	*updt_config_data++ = eq->config.eq_pregain;
+	*updt_config_data++ = eq->config.preset_id;
+	*updt_config_data++ = eq->config.num_bands;
+	for (idx = 0; idx < MAX_EQ_BANDS; idx++) {
+		if (eq->per_band_cfg[idx].band_idx < 0)
+			continue;
+		*updt_config_data++ = eq->per_band_cfg[idx].filter_type;
+		*updt_config_data++ = eq->per_band_cfg[idx].freq_millihertz;
+		*updt_config_data++ = eq->per_band_cfg[idx].gain_millibels;
+		*updt_config_data++ = eq->per_band_cfg[idx].quality_factor;
+		*updt_config_data++ = eq->per_band_cfg[idx].band_idx;
+	}
+	*prev_config_param_length = config_param_length;
+	return 0;
+}
+
 /**
  * msm_audio_effects_popless_eq_handler -
  *        Audio effects handler for popless equalizer
@@ -1091,7 +1163,6 @@ int msm_audio_effects_popless_eq_handler(struct audio_client *ac,
 	u8 *param_data = NULL;
 	u32 packed_data_size = 0;
 	u8 *eq_config_data = NULL;
-	u32 *updt_config_data = NULL;
 	int config_param_length, prev_config_param_length = 0;
 
 	pr_debug("%s\n", __func__);
@@ -1120,7 +1191,6 @@ int msm_audio_effects_popless_eq_handler(struct audio_client *ac,
 		uint32_t length =
 			GET_NEXT(values, param_max_offset, rc);
 		uint32_t idx;
-		int j;
 
 		switch (command_id) {
 		case EQ_ENABLE:
@@ -1154,97 +1224,37 @@ int msm_audio_effects_popless_eq_handler(struct audio_client *ac,
 				goto invalid_config;
 			}
 			pr_debug("%s: EQ_CONFIG bands:%d, pgain:%d, pset:%d\n",
-				 __func__, eq->config.num_bands,
-				eq->config.eq_pregain, eq->config.preset_id);
+				__func__, eq->config.num_bands, eq->config.eq_pregain,
+				eq->config.preset_id);
+
 			for (idx = 0; idx < MAX_EQ_BANDS; idx++)
 				eq->per_band_cfg[idx].band_idx = -1;
-			eq->config.eq_pregain =
-				GET_NEXT(values, param_max_offset, rc);
-			eq->config.preset_id =
-				GET_NEXT(values, param_max_offset, rc);
-			eq->config.num_bands =
-				GET_NEXT(values, param_max_offset, rc);
-			if (eq->config.num_bands > MAX_EQ_BANDS) {
-				pr_err("EQ_CONFIG:invalid num of bands\n");
-				rc = -EINVAL;
+
+			if (validate_and_parse_eq_config(eq,
+				values, param_max_offset, length, &rc))
 				goto invalid_config;
-			}
-			if (eq->config.num_bands &&
-			    (((length - EQ_CONFIG_PARAM_LEN)/
-				EQ_CONFIG_PER_BAND_PARAM_LEN)
-				!= eq->config.num_bands)) {
-				pr_err("EQ_CONFIG:invalid length per band\n");
-				rc = -EINVAL;
-				goto invalid_config;
-			}
-			for (j = 0; j < eq->config.num_bands; j++) {
-				idx = GET_NEXT(values, param_max_offset, rc);
-				if (idx >= MAX_EQ_BANDS) {
-					pr_err("EQ_CONFIG:invalid band index\n");
-					rc = -EINVAL;
-					goto invalid_config;
-				}
-				eq->per_band_cfg[idx].band_idx = idx;
-				eq->per_band_cfg[idx].filter_type =
-					GET_NEXT(values, param_max_offset, rc);
-				eq->per_band_cfg[idx].freq_millihertz =
-					GET_NEXT(values, param_max_offset, rc);
-				eq->per_band_cfg[idx].gain_millibels =
-					GET_NEXT(values, param_max_offset, rc);
-				eq->per_band_cfg[idx].quality_factor =
-					GET_NEXT(values, param_max_offset, rc);
-			}
+
 			if (command_config_state != AUDIO_EFFECTS_CONFIG_SET)
 				break;
 			config_param_length = EQ_CONFIG_PARAM_SZ +
-					      (EQ_CONFIG_PER_BAND_PARAM_SZ *
-					       eq->config.num_bands);
+					(EQ_CONFIG_PER_BAND_PARAM_SZ * eq->config.num_bands);
 			max_params_length = params_length +
-					    COMMAND_IID_PAYLOAD_SZ +
-					    config_param_length;
-			CHECK_PARAM_LEN(max_params_length, MAX_INBAND_PARAM_SZ,
-					"EQ_CONFIG", rc);
+					COMMAND_IID_PAYLOAD_SZ +
+					config_param_length;
+			CHECK_PARAM_LEN(max_params_length,
+				MAX_INBAND_PARAM_SZ, "EQ_CONFIG", rc);
 			if (rc != 0)
 				break;
 			param_hdr.param_id = AUDPROC_PARAM_ID_EQ_CONFIG;
 			param_hdr.param_size = config_param_length;
 
-			if (!eq_config_data)
-				eq_config_data = kzalloc(config_param_length,
-							 GFP_KERNEL);
-			else if (config_param_length != prev_config_param_length) {
-				if (eq_config_data)
-					kfree(eq_config_data);
-				eq_config_data = kzalloc(config_param_length,
-							GFP_KERNEL);
-			} else
-				memset(eq_config_data, 0, config_param_length);
-			if (!eq_config_data) {
-				pr_err("%s, EQ_CONFIG:memory alloc failed\n",
-					__func__);
+			if (prepare_eq_config_data(eq, &eq_config_data,
+				config_param_length, &prev_config_param_length) < 0) {
+				pr_err("%s, EQ_CONFIG:memory alloc failed\n", __func__);
 				rc = -ENOMEM;
 				goto invalid_config;
 			}
 			param_data = eq_config_data;
-			updt_config_data = (u32 *) eq_config_data;
-			*updt_config_data++ = eq->config.eq_pregain;
-			*updt_config_data++ = eq->config.preset_id;
-			*updt_config_data++ = eq->config.num_bands;
-			for (idx = 0; idx < MAX_EQ_BANDS; idx++) {
-				if (eq->per_band_cfg[idx].band_idx < 0)
-					continue;
-				*updt_config_data++ =
-					eq->per_band_cfg[idx].filter_type;
-				*updt_config_data++ =
-					eq->per_band_cfg[idx].freq_millihertz;
-				*updt_config_data++ =
-					eq->per_band_cfg[idx].gain_millibels;
-				*updt_config_data++ =
-					eq->per_band_cfg[idx].quality_factor;
-				*updt_config_data++ =
-					eq->per_band_cfg[idx].band_idx;
-			}
-			prev_config_param_length = config_param_length;
 			break;
 		case EQ_BAND_INDEX:
 			if (length != 1 || index_offset != 0) {

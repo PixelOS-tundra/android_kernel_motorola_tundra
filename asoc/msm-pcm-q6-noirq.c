@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -27,17 +28,19 @@
 #include <asm/dma.h>
 #include <sound/tlv.h>
 #include <sound/pcm_params.h>
-#include <audio/sound/devdep_params.h>
+#include <sound/devdep_params.h>
 #include <dsp/msm_audio_ion.h>
 #include <dsp/q6audio-v2.h>
 
 #include "msm-pcm-q6-v2.h"
 #include "msm-pcm-routing-v2.h"
 
+MODULE_IMPORT_NS(DMA_BUF);
 
 #define DRV_NAME "msm-pcm-q6-noirq"
 
 #define PCM_MASTER_VOL_MAX_STEPS	0x2000
+#define SNDRV_HWDEP_IFACE_AUDIO_BE	27   /* for lack of a FE iface */
 static const DECLARE_TLV_DB_LINEAR(msm_pcm_vol_gain, 0,
 			PCM_MASTER_VOL_MAX_STEPS);
 
@@ -182,7 +185,7 @@ static void event_handler(uint32_t opcode,
 	}
 }
 
-static int msm_pcm_open(struct snd_pcm_substream *substream)
+static int msm_pcm_open(struct snd_soc_component *component, struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct msm_audio *prtd;
@@ -265,14 +268,14 @@ fail_cmd:
 	return ret;
 }
 
-static int msm_pcm_hw_params(struct snd_pcm_substream *substream,
+static int msm_pcm_hw_params(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
-	struct snd_soc_component *component =
-				snd_soc_rtdcom_lookup(soc_prtd, DRV_NAME);
+
 	struct msm_audio *prtd = runtime->private_data;
 	struct msm_plat_data *pdata;
 	struct snd_dma_buffer *dma_buf = &substream->dma_buffer;
@@ -405,7 +408,8 @@ static int msm_pcm_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+static int msm_pcm_trigger(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream, int cmd)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -419,7 +423,7 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		pr_debug("%s: %s Trigger start\n", __func__,
 			 dir == 0 ? "P" : "C");
-		ret = q6asm_run(prtd->audio_client, 0, 0, 0);
+		ret = q6asm_run_nowait(prtd->audio_client, 0, 0, 0);
 		if (ret)
 			break;
 		atomic_set(&prtd->start, 1);
@@ -427,8 +431,8 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_STOP:
 		pr_debug("%s: SNDRV_PCM_TRIGGER_STOP\n", __func__);
 		atomic_set(&prtd->start, 0);
-		q6asm_cmd(prtd->audio_client, CMD_PAUSE);
-		q6asm_cmd(prtd->audio_client, CMD_FLUSH);
+		q6asm_cmd_nowait(prtd->audio_client, CMD_PAUSE);
+		q6asm_cmd_nowait(prtd->audio_client, CMD_FLUSH);
 		buf = q6asm_shared_io_buf(prtd->audio_client, dir);
 		if (buf == NULL) {
 			pr_err("%s: shared IO buffer is null\n", __func__);
@@ -450,7 +454,6 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_AUDIO_QGKI)
 static int msm_pcm_mmap_fd(struct snd_pcm_substream *substream,
 			   struct snd_pcm_mmap_fd *mmap_fd)
 {
@@ -458,6 +461,7 @@ static int msm_pcm_mmap_fd(struct snd_pcm_substream *substream,
 	struct audio_port_data *apd;
 	struct audio_buffer *ab;
 	int dir = -1;
+	struct file *fptr = NULL;
 	struct dma_buf *buf = NULL;
 	int rc = 0;
 
@@ -485,13 +489,20 @@ static int msm_pcm_mmap_fd(struct snd_pcm_substream *substream,
 	 * This was the flag used by previous internal wrapper API, which
 	 * used to call dma_buf_fd internally.
 	 */
-	mmap_fd->fd = dma_buf_fd(ab->dma_buf, O_CLOEXEC);
+	mmap_fd->fd = dma_buf_fd(ab->mem_handle, O_CLOEXEC);
 	if (mmap_fd->fd < 0) {
 		pr_err("%s: dma_buf_fd failed, fd:%d\n",
 			__func__, mmap_fd->fd);
 		rc = -EFAULT;
 		goto buf_fd_fail;
 	}
+
+	/* Add write permission to the file descriptor */
+	fptr = fget(mmap_fd->fd);
+	if (!fptr)
+		return -EBADF;
+	fptr->f_mode = fptr->f_mode | FMODE_WRITE;
+
 	mmap_fd->dir = dir;
 	mmap_fd->actual_size = ab->actual_size;
 	mmap_fd->size = ab->size;
@@ -506,9 +517,9 @@ static int msm_pcm_mmap_fd(struct snd_pcm_substream *substream,
 buf_fd_fail:
         return rc;
 }
-#endif /* CONFIG_AUDIO_QGKI */
 
-static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
+static int msm_pcm_ioctl(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream,
 			 unsigned int cmd, void *arg)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -532,16 +543,8 @@ static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
 	return snd_pcm_lib_ioctl(substream, cmd, arg);
 }
 
-#if IS_ENABLED(CONFIG_COMPAT) && IS_ENABLED(CONFIG_AUDIO_QGKI)
-static int msm_pcm_compat_ioctl(struct snd_pcm_substream *substream,
-				unsigned int cmd, void *arg)
-{
-	/* we only handle RESET which is common for both modes */
-	return msm_pcm_ioctl(substream, cmd, arg);
-}
-#endif
-
-static snd_pcm_uframes_t msm_pcm_pointer(struct snd_pcm_substream *substream)
+static snd_pcm_uframes_t msm_pcm_pointer(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	uint32_t read_index, wall_clk_msw, wall_clk_lsw;
@@ -577,13 +580,14 @@ static snd_pcm_uframes_t msm_pcm_pointer(struct snd_pcm_substream *substream)
 	return (hw_ptr/period_size) * period_size;
 }
 
-static int msm_pcm_copy(struct snd_pcm_substream *substream, int a,
+static int msm_pcm_copy(struct snd_soc_component *component,
+	struct snd_pcm_substream *substream, int a,
 	 unsigned long hwoff, void __user *buf, unsigned long fbytes)
 {
 	return -EINVAL;
 }
 
-static int msm_pcm_mmap(struct snd_pcm_substream *substream,
+static int msm_pcm_mmap(struct snd_soc_component *component, struct snd_pcm_substream *substream,
 				struct vm_area_struct *vma)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -612,7 +616,7 @@ static int msm_pcm_mmap(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int msm_pcm_prepare(struct snd_pcm_substream *substream)
+static int msm_pcm_prepare(struct snd_soc_component *component, struct snd_pcm_substream *substream)
 {
 	int rc = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -636,10 +640,9 @@ static int msm_pcm_prepare(struct snd_pcm_substream *substream)
 	return rc;
 }
 
-static int msm_pcm_close(struct snd_pcm_substream *substream)
+static int msm_pcm_close(struct snd_soc_component *component, struct snd_pcm_substream *substream)
 {
 	struct msm_plat_data *pdata = NULL;
-	struct snd_soc_component *component = NULL;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct msm_audio *prtd = runtime->private_data;
@@ -654,7 +657,6 @@ static int msm_pcm_close(struct snd_pcm_substream *substream)
 		return 0;
 	}
 
-	component = snd_soc_rtdcom_lookup(soc_prtd, DRV_NAME);
 	if (!component) {
 		pr_err("%s: component is NULL\n", __func__);
 		return -EINVAL;
@@ -706,7 +708,6 @@ static int msm_pcm_close(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_AUDIO_QGKI)
 static int msm_pcm_set_volume(struct msm_audio *prtd, uint32_t volume)
 {
 	int rc = 0;
@@ -848,13 +849,6 @@ static int msm_pcm_add_volume_control(struct snd_soc_pcm_runtime *rtd,
 	kctl->tlv.p = msm_pcm_vol_gain;
 	return 0;
 }
-#else
-static int msm_pcm_add_volume_control(struct snd_soc_pcm_runtime *rtd,
-				      int stream)
-{
-	return 0;
-}
-#endif /* CONFIG_AUDIO_QGKI */
 
 static int msm_pcm_channel_map_put(struct snd_kcontrol *kcontrol,
 				     struct snd_ctl_elem_value *ucontrol)
@@ -1080,7 +1074,6 @@ static int msm_pcm_add_fe_topology_control(struct snd_soc_pcm_runtime *rtd)
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_AUDIO_QGKI)
 static int msm_pcm_playback_app_type_cfg_ctl_put(struct snd_kcontrol *kcontrol,
 				      struct snd_ctl_elem_value *ucontrol)
 {
@@ -1196,14 +1189,17 @@ static int msm_pcm_add_app_type_controls(struct snd_soc_pcm_runtime *rtd)
 	const char *deviceNo = "NN";
 	const char *suffix = "App Type Cfg";
 	int ctl_len, ret = 0;
+	char kctl_name[SNDRV_CTL_ELEM_ID_NAME_MAXLEN] = {0};
 
 	if (pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream) {
 		ctl_len = strlen(playback_mixer_ctl_name) + 1 +
 				strlen(deviceNo) + 1 +
 				strlen(suffix) + 1;
 		pr_debug("%s: Playback app type cntrl add\n", __func__);
+		snprintf(kctl_name, ctl_len, "%s %d %s",
+			     playback_mixer_ctl_name, rtd->pcm->device, suffix);
 		ret = snd_pcm_add_usr_ctls(pcm, SNDRV_PCM_STREAM_PLAYBACK,
-				NULL, 1, ctl_len, rtd->dai_link->id,
+				NULL, 1, kctl_name, rtd->dai_link->id,
 				&app_type_info);
 		if (ret < 0) {
 			pr_err("%s: playback app type cntrl add failed, err: %d\n",
@@ -1211,8 +1207,6 @@ static int msm_pcm_add_app_type_controls(struct snd_soc_pcm_runtime *rtd)
 			return ret;
 		}
 		kctl = app_type_info->kctl;
-		snprintf(kctl->id.name, ctl_len, "%s %d %s",
-			     playback_mixer_ctl_name, rtd->pcm->device, suffix);
 		kctl->put = msm_pcm_playback_app_type_cfg_ctl_put;
 		kctl->get = msm_pcm_playback_app_type_cfg_ctl_get;
 	}
@@ -1220,9 +1214,11 @@ static int msm_pcm_add_app_type_controls(struct snd_soc_pcm_runtime *rtd)
 	if (pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream) {
 		ctl_len = strlen(capture_mixer_ctl_name) + 1 +
 				strlen(deviceNo) + 1 + strlen(suffix) + 1;
+		snprintf(kctl_name, ctl_len, "%s %d %s",
+				capture_mixer_ctl_name, rtd->pcm->device, suffix);
 		pr_debug("%s: Capture app type cntrl add\n", __func__);
 		ret = snd_pcm_add_usr_ctls(pcm, SNDRV_PCM_STREAM_CAPTURE,
-				NULL, 1, ctl_len, rtd->dai_link->id,
+				NULL, 1, kctl_name, rtd->dai_link->id,
 				&app_type_info);
 		if (ret < 0) {
 			pr_err("%s: capture app type cntrl add failed, err: %d\n",
@@ -1230,22 +1226,13 @@ static int msm_pcm_add_app_type_controls(struct snd_soc_pcm_runtime *rtd)
 			return ret;
 		}
 		kctl = app_type_info->kctl;
-		snprintf(kctl->id.name, ctl_len, "%s %d %s",
-		 capture_mixer_ctl_name, rtd->pcm->device, suffix);
 		kctl->put = msm_pcm_capture_app_type_cfg_ctl_put;
 		kctl->get = msm_pcm_capture_app_type_cfg_ctl_get;
 	}
 
 	return 0;
 }
-#else
-static int msm_pcm_add_app_type_controls(struct snd_soc_pcm_runtime *rtd)
-{
-	return 0;
-}
-#endif /* CONFIG_AUDIO_QGKI */
 
-#if IS_ENABLED(CONFIG_AUDIO_QGKI)
 static int msm_pcm_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
 			       unsigned int cmd, unsigned long arg)
 {
@@ -1298,7 +1285,6 @@ static int msm_pcm_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
 	return ret;
 }
 
-#ifdef CONFIG_COMPAT
 static int msm_pcm_hwdep_compat_ioctl(struct snd_hwdep *hw,
 				      struct file *file,
 				      unsigned int cmd,
@@ -1307,15 +1293,6 @@ static int msm_pcm_hwdep_compat_ioctl(struct snd_hwdep *hw,
 	/* we only support mmap fd. Handling is common in both modes */
 	return msm_pcm_hwdep_ioctl(hw, file, cmd, arg);
 }
-#else
-static int msm_pcm_hwdep_compat_ioctl(struct snd_hwdep *hw,
-				      struct file *file,
-				      unsigned int cmd,
-				      unsigned long arg)
-{
-	return -EINVAL;
-}
-#endif
 
 static int msm_pcm_add_hwdep_dev(struct snd_soc_pcm_runtime *runtime)
 {
@@ -1341,17 +1318,10 @@ static int msm_pcm_add_hwdep_dev(struct snd_soc_pcm_runtime *runtime)
 	hwdep->ops.ioctl_compat = msm_pcm_hwdep_compat_ioctl;
 	return 0;
 }
-#else
-static int msm_pcm_add_hwdep_dev(struct snd_soc_pcm_runtime *runtime)
-{
-	return 0;
-}
-#endif /* CONFIG_AUDIO_GKI */
 
-static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
+static int msm_asoc_pcm_new(struct snd_soc_component *component, struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_card *card = rtd->card->snd_card;
-	struct snd_pcm *pcm = rtd->pcm;
 	int ret;
 
 	pr_debug("%s , register new control\n", __func__);
@@ -1387,31 +1357,24 @@ static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	ret = msm_pcm_add_hwdep_dev(rtd);
 	if (ret)
 		pr_err("%s: Could not add hw dep node\n", __func__);
-	pcm->nonatomic = true;
 
 	return ret;
 }
 
 
-static const struct snd_pcm_ops msm_pcm_ops = {
-	.open           = msm_pcm_open,
-	.prepare        = msm_pcm_prepare,
-	.copy_user      = msm_pcm_copy,
-	.hw_params	= msm_pcm_hw_params,
-	.ioctl          = msm_pcm_ioctl,
-#if IS_ENABLED(CONFIG_COMPAT) && IS_ENABLED(CONFIG_AUDIO_QGKI)
-	.compat_ioctl   = msm_pcm_compat_ioctl,
-#endif
-	.trigger        = msm_pcm_trigger,
-	.pointer        = msm_pcm_pointer,
-	.mmap           = msm_pcm_mmap,
-	.close          = msm_pcm_close,
-};
 
 static struct snd_soc_component_driver msm_soc_component = {
-	.name		= DRV_NAME,
-	.ops		= &msm_pcm_ops,
-	.pcm_new	= msm_asoc_pcm_new,
+	.name			= DRV_NAME,
+	.pcm_construct	= msm_asoc_pcm_new,
+	.open           	= msm_pcm_open,
+	.prepare        	= msm_pcm_prepare,
+	.copy_user      	= msm_pcm_copy,
+	.hw_params		= msm_pcm_hw_params,
+	.ioctl          	= msm_pcm_ioctl,
+	.trigger        	= msm_pcm_trigger,
+	.pointer        	= msm_pcm_pointer,
+	.mmap           	= msm_pcm_mmap,
+	.close          	= msm_pcm_close,
 };
 
 static int msm_pcm_probe(struct platform_device *pdev)

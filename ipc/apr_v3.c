@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2013-2016, 2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/types.h>
@@ -50,7 +51,7 @@ void subsys_notif_register(char *client_name, int domain,
 		return;
 	}
 
-	ret = audio_notifier_register(client_name, domain, nb);
+	ret = audio_notifier_legacy_register(client_name, domain, nb);
 	if (ret < 0)
 		pr_err("%s: Audio notifier register failed for domain %d ret = %d\n",
 			__func__, domain, ret);
@@ -60,7 +61,7 @@ void subsys_notif_deregister(char *client_name)
 {
 	int ret;
 
-	ret = audio_notifier_deregister(client_name);
+	ret = audio_notifier_legacy_deregister(client_name);
 	if (ret < 0)
 		pr_err("%s: Audio notifier de-register failed for client %s\n",
 			__func__, client_name);

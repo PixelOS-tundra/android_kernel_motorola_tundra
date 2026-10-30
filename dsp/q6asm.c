@@ -3,6 +3,7 @@
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -27,6 +28,7 @@
 #include <linux/slab.h>
 #include <linux/debugfs.h>
 #include <linux/time.h>
+#include <linux/time64.h>
 #include <linux/atomic.h>
 #include <linux/mm.h>
 
@@ -44,6 +46,7 @@
 #include <dsp/q6common.h>
 #include <dsp/q6core.h>
 #include "adsp_err.h"
+#include "../asoc/compress_ext.h"
 
 #define TIMEOUT_MS  1000
 #define TRUE        0x01
@@ -263,10 +266,10 @@ static inline int q6asm_get_flag_from_token(union asm_token_struct *asm_token,
 #define OUT_BUFFER_SIZE 56
 #define IN_BUFFER_SIZE 24
 
-static struct timeval out_cold_tv;
-static struct timeval out_warm_tv;
-static struct timeval out_cont_tv;
-static struct timeval in_cont_tv;
+static struct __kernel_old_timeval out_cold_tv;
+static struct __kernel_old_timeval out_warm_tv;
+static struct __kernel_old_timeval out_cont_tv;
+static struct __kernel_old_timeval in_cont_tv;
 static long out_enable_flag;
 static long in_enable_flag;
 static struct dentry *out_dentry;
@@ -400,15 +403,15 @@ static const struct file_operations audio_input_latency_debug_fops = {
  *
  * Returns struct timeval
 */
-static struct timeval get_monotonic_timeval(void)
+static struct __kernel_old_timeval get_monotonic_timeval(void)
 {
-	static struct timeval out_tval;
+	static struct __kernel_old_timeval out_tval;
 
 	/* Get time from monotonic clock in nanoseconds */
 	ktime_t kTimeNsec = ktime_get();
 
 	/* Convert it to timespec format and later to timeval as expected by audio HAL */
-	struct timespec temp_tspec = ktime_to_timespec(kTimeNsec);
+	struct timespec64 temp_tspec = ktime_to_timespec64(kTimeNsec);
 
 	/* Time returned above is in sec,nanosec format, needs to convert to sec,microsec */
 	out_tval.tv_usec = temp_tspec.tv_nsec/1000;
@@ -636,8 +639,11 @@ static int q6asm_session_register(struct audio_client *ac)
 
 	pr_debug("%s: Registering the common port with APR\n", __func__);
 	ac->mmap_apr = q6asm_mmap_apr_reg();
-	if (ac->mmap_apr == NULL)
+	if (ac->mmap_apr == NULL) {
+		pr_err("%s: q6asm_mmap_apr_reg failed\n",
+			__func__);
 		goto fail_mmap;
+	}
 
 	return 0;
 
@@ -793,7 +799,7 @@ static int remap_cal_data(int32_t cal_type, struct cal_block_data *cal_block)
 {
 	int ret = 0;
 
-	if (cal_block->map_data.dma_buf == NULL) {
+	if (cal_block->map_data.mem_handle == NULL) {
 		pr_err("%s: No ION allocation for cal type %d!\n",
 			__func__, cal_type);
 		ret = -EINVAL;
@@ -1204,9 +1210,9 @@ int q6asm_audio_client_buf_free(unsigned int dir,
 			if (port->buf[cnt].data) {
 				if (!rc || atomic_read(&ac->reset))
 					msm_audio_ion_free(
-						port->buf[cnt].dma_buf);
+						port->buf[cnt].mem_handle);
 
-				port->buf[cnt].dma_buf = NULL;
+				port->buf[cnt].mem_handle = NULL;
 				port->buf[cnt].data = NULL;
 				port->buf[cnt].phys = 0;
 				--(port->max_buf_cnt);
@@ -1253,14 +1259,14 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 	}
 
 	if (port->buf[0].data) {
-		pr_debug("%s: data[%pK], phys[%pK], dma_buf[%pK]\n",
+		pr_debug("%s: data[%pK], phys[%pK], mem_handle[%pK]\n",
 			__func__,
 			port->buf[0].data,
 			&port->buf[0].phys,
-			port->buf[0].dma_buf);
+			port->buf[0].mem_handle);
 		if (!rc || atomic_read(&ac->reset))
-			msm_audio_ion_free(port->buf[0].dma_buf);
-		port->buf[0].dma_buf = NULL;
+			msm_audio_ion_free(port->buf[0].mem_handle);
+		port->buf[0].mem_handle = NULL;
 	}
 
 	while (cnt >= 0) {
@@ -1649,7 +1655,7 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 			if (bufsz > 0) {
 				if (!buf[cnt].data) {
 					rc = msm_audio_ion_alloc(
-					      &buf[cnt].dma_buf,
+					      &buf[cnt].mem_handle,
 					      bufsz,
 					      &buf[cnt].phys,
 					      &len,
@@ -1754,7 +1760,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 	/* The size to allocate should be multiple of 4K bytes */
 	bytes_to_alloc = PAGE_ALIGN(bytes_to_alloc);
 
-	rc = msm_audio_ion_alloc(&buf[0].dma_buf,
+	rc = msm_audio_ion_alloc(&buf[0].mem_handle,
 		bytes_to_alloc,
 		&buf[0].phys, &len,
 		&buf[0].data);
@@ -2148,6 +2154,7 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 					data->payload_size))
 					break;
 			}
+		fallthrough;
 		case ASM_SESSION_CMD_PAUSE:
 		case ASM_SESSION_CMD_SUSPEND:
 		case ASM_DATA_CMD_EOS:
@@ -2167,6 +2174,7 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 				&(session[session_id].session_lock), flags);
 			return ret;
 		}
+		fallthrough;
 		case ASM_SESSION_CMD_SET_MTMX_STRTR_PARAMS_V2:
 		case ASM_STREAM_CMD_OPEN_READ_V3:
 		case ASM_STREAM_CMD_OPEN_WRITE_V3:
@@ -3736,7 +3744,7 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 		return -EINVAL;
 	}
 
-	dev_vdbg(ac->dev, "%s: session[%d] wr_format[0x%x]\n",
+	pr_debug("%s: session[%d] wr_format[0x%x]\n",
 		__func__, ac->session, format);
 
 	q6asm_stream_add_hdr(ac, &open.hdr, sizeof(open), TRUE, stream_id);
@@ -4563,7 +4571,7 @@ int q6asm_set_shared_circ_buff(struct audio_client *ac,
 	bytes_to_alloc = bufsz * bufcnt;
 	bytes_to_alloc = PAGE_ALIGN(bytes_to_alloc);
 
-	rc = msm_audio_ion_alloc(&buf_circ->dma_buf,
+	rc = msm_audio_ion_alloc(&buf_circ->mem_handle,
 			bytes_to_alloc,
 			&buf_circ->phys,
 			&len, &buf_circ->data);
@@ -4617,7 +4625,7 @@ int q6asm_set_shared_pos_buff(struct audio_client *ac,
 
 	bytes_to_alloc = PAGE_ALIGN(bytes_to_alloc);
 
-	rc = msm_audio_ion_alloc(&buf_pos->dma_buf,
+	rc = msm_audio_ion_alloc(&buf_pos->mem_handle,
 			bytes_to_alloc,
 			&buf_pos->phys, &len,
 			&buf_pos->data);
@@ -4872,15 +4880,15 @@ int q6asm_shared_io_free(struct audio_client *ac, int dir)
 	port = &ac->port[dir];
 	mutex_lock(&ac->cmd_lock);
 	if (port->buf && port->buf->data) {
-		msm_audio_ion_free(port->buf->dma_buf);
-		port->buf->dma_buf = NULL;
+		msm_audio_ion_free(port->buf->mem_handle);
+		port->buf->mem_handle = NULL;
 		port->max_buf_cnt = 0;
 		kfree(port->buf);
 		port->buf = NULL;
 	}
 	if (ac->shared_pos_buf.data) {
-		msm_audio_ion_free(ac->shared_pos_buf.dma_buf);
-		ac->shared_pos_buf.dma_buf = NULL;
+		msm_audio_ion_free(ac->shared_pos_buf.mem_handle);
+		ac->shared_pos_buf.mem_handle = NULL;
 	}
 	mutex_unlock(&ac->cmd_lock);
 	return 0;
@@ -9284,7 +9292,7 @@ EXPORT_SYMBOL(q6asm_set_aptx_dec_bt_addr);
  */
 int q6asm_send_ion_fd(struct audio_client *ac, int fd)
 {
-	struct dma_buf *dma_buf;
+	void *mem_handle;
 	dma_addr_t paddr;
 	size_t pa_len = 0;
 	void *vaddr;
@@ -9303,7 +9311,7 @@ int q6asm_send_ion_fd(struct audio_client *ac, int fd)
 		goto fail_cmd;
 	}
 
-	ret = msm_audio_ion_import(&dma_buf,
+	ret = msm_audio_ion_import(&mem_handle,
 				   fd,
 				   NULL,
 				   0,

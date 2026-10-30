@@ -1,92 +1,122 @@
 # auto-detect subdirs
+ifeq ($(QTI_TECHPACK_KERNEL_6_1), true)
+LEGACY_PATH=$(PWD)/../../../../vendor/qcom/opensource/audio-kernel
+else
+ifeq ($(QTI_TECHPACK), true)
+LEGACY_PATH=$(PWD)/../vendor/qcom/opensource/audio-kernel
+else
+LEGACY_PATH=$(PWD)/../vendor/qcom/opensource/audio-kernel/legacy
+endif
+endif
 ifneq ($(CONFIG_ARCH_QTI_VM), y)
 ifeq ($(CONFIG_QTI_QUIN_GVM), y)
-include $(srctree)/techpack/audio/config/gvmauto.conf
+ifeq ($(QTI_TECHPACK_KERNEL_6_1), true)
+include $(LEGACY_PATH)/config/gvmautolv.conf
+else
+include $(LEGACY_PATH)/config/gvmauto.conf
+endif
 endif
 ifeq ($(CONFIG_ARCH_SDXPOORWILLS), y)
-include $(srctree)/techpack/audio/config/sdxpoorwillsauto.conf
+include $(LEGACY_PATH)/config/sdxpoorwillsauto.conf
 export
 endif
 ifeq ($(CONFIG_ARCH_SM8150), y)
-include $(srctree)/techpack/audio/config/sm8150auto.conf
+include $(LEGACY_PATH)/config/sm8150auto.conf
 export
 endif
 ifeq ($(CONFIG_ARCH_SDMSHRIKE), y)
-include $(srctree)/techpack/audio/config/sm8150auto.conf
+include $(LEGACY_PATH)/config/sm8150auto.conf
 export
 endif
 ifeq ($(CONFIG_ARCH_KONA), y)
-include $(srctree)/techpack/audio/config/konaauto.conf
+include $(LEGACY_PATH)/config/konaauto.conf
 endif
 ifeq ($(CONFIG_ARCH_LAHAINA), y)
-include $(srctree)/techpack/audio/config/lahainaauto.conf
+include $(LEGACY_PATH)/config/lahainaauto.conf
 endif
 ifeq ($(CONFIG_ARCH_HOLI), y)
-include $(srctree)/techpack/audio/config/holiauto.conf
+include $(LEGACY_PATH)/config/holiauto.conf
 endif
 ifeq ($(CONFIG_ARCH_SA8155), y)
-include $(srctree)/techpack/audio/config/sa8155auto.conf
+include $(LEGACY_PATH)/config/sa8155auto.conf
 endif
 ifeq ($(CONFIG_ARCH_SA6155), y)
-include $(srctree)/techpack/audio/config/sa6155auto.conf
+include $(LEGACY_PATH)/config/sa6155auto.conf
 endif
 ifeq ($(CONFIG_ARCH_SM6150), y)
-include $(srctree)/techpack/audio/config/sm6150auto.conf
+include $(LEGACY_PATH)/config/sm6150auto.conf
 endif
 endif
 # Use USERINCLUDE when you must reference the UAPI directories only.
 USERINCLUDE     += \
-                -I$(srctree)/techpack/audio/include/uapi/audio
+                -I$(LEGACY_PATH)/include/uapi
 
 # Use LINUXINCLUDE when you must reference the include/ directory.
 # Needed to be compatible with the O= option
 LINUXINCLUDE    += \
-                -I$(srctree)/techpack/audio/include/uapi \
-                -I$(srctree)/techpack/audio/include/uapi/audio \
-                -I$(srctree)/techpack/audio/include/asoc \
-                -I$(srctree)/techpack/audio/include
+                -I$(LEGACY_PATH)/include/uapi \
+                -I$(LEGACY_PATH)/include/asoc \
+                -I$(LEGACY_PATH)/include
 
 ifeq ($(CONFIG_QTI_QUIN_GVM), y)
+ifeq ($(QTI_TECHPACK_KERNEL_6_1), true)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/gvmautoconf.h
+                -include $(LEGACY_PATH)/config/gvmautolvconf.h
+else
+LINUXINCLUDE    += \
+                -include $(LEGACY_PATH)/config/gvmautoconf.h
+endif
 endif
 ifeq ($(CONFIG_ARCH_SDXPOORWILLS), y)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/sdxpoorwillsautoconf.h
+                -include $(LEGACY_PATH)/config/sdxpoorwillsautoconf.h
 endif
 ifeq ($(CONFIG_ARCH_SM8150), y)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/sm8150autoconf.h
+                -include $(LEGACY_PATH)/config/sm8150autoconf.h
 endif
 ifeq ($(CONFIG_ARCH_SDMSHRIKE), y)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/sm8150autoconf.h
+                -include $(LEGACY_PATH)/config/sm8150autoconf.h
 endif
 ifeq ($(CONFIG_ARCH_KONA), y)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/konaautoconf.h
+                -include $(LEGACY_PATH)/config/konaautoconf.h
 endif
 ifeq ($(CONFIG_ARCH_LAHAINA), y)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/lahainaautoconf.h
+                -include $(LEGACY_PATH)/config/lahainaautoconf.h
 endif
 ifeq ($(CONFIG_ARCH_HOLI), y)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/holiautoconf.h
+                -include $(LEGACY_PATH)/config/holiautoconf.h
 endif
 ifeq ($(CONFIG_ARCH_SA8155), y)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/sa8155autoconf.h
+                -include $(LEGACY_PATH)/config/sa8155autoconf.h
 endif
 ifeq ($(CONFIG_ARCH_SA6155), y)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/sa6155autoconf.h
+                -include $(LEGACY_PATH)/config/sa6155autoconf.h
 endif
 ifeq ($(CONFIG_ARCH_SM6150), y)
 LINUXINCLUDE    += \
-                -include $(srctree)/techpack/audio/config/sm6150autoconf.h
+                -include $(LEGACY_PATH)/config/sm6150autoconf.h
 endif
 obj-y += soc/
 obj-y += dsp/
 obj-y += ipc/
 obj-y += asoc/
+
+M=$(PWD)
+AUDIO_ROOT=$(KERNEL_SRC)/$(M)
+
+KBUILD_OPTIONS+=  AUDIO_ROOT=$(AUDIO_ROOT)
+
+all: modules
+
+clean:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) clean
+
+%:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) $@ $(KBUILD_OPTIONS)

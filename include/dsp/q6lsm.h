@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __Q6LSM_H__
 #define __Q6LSM_H__
@@ -8,7 +9,7 @@
 #include <linux/list.h>
 #include <linux/msm_ion.h>
 #include <dsp/apr_audio-v2.h>
-#include <audio/sound/lsm_params.h>
+#include <sound/lsm_params.h>
 #include <ipc/apr.h>
 
 #define MAX_NUM_CONFIDENCE 20
@@ -34,7 +35,7 @@ struct lsm_sound_model {
 	void		*data;
 	size_t		size; /* size of buffer */
 	uint32_t	actual_size; /* actual number of bytes read by DSP */
-	struct dma_buf	*dma_buf;
+	void		*mem_handle;
 	uint32_t	mem_map_handle;
 	uint32_t	model_id;
 	struct list_head	list;
@@ -50,7 +51,7 @@ struct lsm_lab_buffer {
 	dma_addr_t phys;
 	void *data;
 	size_t size;
-	struct dma_buf *dma_buf;
+	void *mem_handle;
 	uint32_t mem_map_handle;
 };
 
@@ -66,7 +67,7 @@ struct lsm_cal_data_info {
 	dma_addr_t	phys;
 	void	*data;
 	size_t	size;
-	struct dma_buf	*dma_buf;
+	void	*mem_handle;
 	uint32_t	mem_map_handle;
 };
 

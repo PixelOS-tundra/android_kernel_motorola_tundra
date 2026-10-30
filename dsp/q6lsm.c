@@ -16,7 +16,7 @@
 #include <linux/debugfs.h>
 #include <linux/time.h>
 #include <linux/atomic.h>
-#include <audio/sound/lsm_params.h>
+#include <sound/lsm_params.h>
 #include <asm/ioctls.h>
 #include <linux/memory.h>
 #include <dsp/msm_audio_ion.h>
@@ -1944,8 +1944,8 @@ static int q6lsm_snd_cal_free(struct lsm_client *client,
 					__func__, rc);
 		cal->mem_map_handle = 0;
 	}
-	msm_audio_ion_free(cal->dma_buf);
-	cal->dma_buf = NULL;
+	msm_audio_ion_free(cal->mem_handle);
+	cal->mem_handle = NULL;
 	cal->data = NULL;
 	cal->phys = 0;
 	mutex_unlock(&client->cmd_lock);
@@ -2006,12 +2006,12 @@ static int q6lsm_snd_cal_alloc(struct lsm_client *client,
 	pr_debug("%s: cal info data size %zd Total mem %zd, stage_idx %d\n",
 		 __func__, len, total_mem, stage_idx);
 
-	rc = msm_audio_ion_alloc(&cal->dma_buf, total_mem,
+	rc = msm_audio_ion_alloc(&cal->mem_handle, total_mem,
 			&cal->phys, &len, &cal->data);
 	if (rc) {
 		pr_err("%s: Audio ION alloc is failed for stage_idx %d, rc = %d\n",
 			__func__, stage_idx, rc);
-		cal->dma_buf = NULL;
+		cal->mem_handle = NULL;
 		cal->data = NULL;
 		goto exit;
 	}
@@ -2071,8 +2071,8 @@ int q6lsm_snd_model_buf_free(struct lsm_client *client,
 				__func__, rc);
 		sm->mem_map_handle = 0;
 	}
-	msm_audio_ion_free(sm->dma_buf);
-	sm->dma_buf = NULL;
+	msm_audio_ion_free(sm->mem_handle);
+	sm->mem_handle = NULL;
 	sm->data = NULL;
 	sm->phys = 0;
 	mutex_unlock(&client->cmd_lock);
@@ -2146,6 +2146,12 @@ static int q6lsm_mmapcallback(struct apr_client_data *data, void *priv)
 		return -EINVAL;
 	}
 
+	if (data->payload_size < (2 * sizeof(uint32_t))) {
+		pr_err("%s: payload has invalid size[%d]\n", __func__,
+			data->payload_size);
+		return -EINVAL;
+	}
+
 	command = payload[0];
 	retcode = payload[1];
 	sid = (data->token >> 8) & 0x0F;
@@ -2194,6 +2200,7 @@ static int q6lsm_mmapcallback(struct apr_client_data *data, void *priv)
 			pr_warn("%s: Unexpected command 0x%x\n", __func__,
 				command);
 		}
+		fallthrough;
 		/* fallthrough */
 	default:
 		pr_debug("%s: command 0x%x return code 0x%x opcode 0x%x\n",
@@ -2246,8 +2253,8 @@ int q6lsm_snd_model_buf_alloc(struct lsm_client *client, size_t len,
 		total_mem = PAGE_ALIGN(len);
 		pr_debug("%s: sm param size %zd Total mem %zd, stage_idx %d\n",
 				 __func__, len, total_mem, stage_idx);
-		rc = msm_audio_ion_alloc(&sm->dma_buf, total_mem,
-					 &sm->phys, &len, &sm->data);
+		rc = msm_audio_ion_alloc(&sm->mem_handle, total_mem,
+								&sm->phys, &len, &sm->data);
 		if (rc) {
 			pr_err("%s: Audio ION alloc is failed, rc = %d, stage_idx = %d\n",
 				__func__, rc, stage_idx);
@@ -2470,10 +2477,10 @@ int q6lsm_set_one_param(struct lsm_client *client,
 				       sizeof(struct param_hdr_v2);
 
 		if (param_type == LSM_REG_MULTI_SND_MODEL) {
-			if(list_empty(&client->stage_cfg[p_info->stage_idx].sound_models)) {
-				 pr_err("%s: sound_models list is empty \n",
-                                 __func__);
-				 return -EINVAL;
+			if (list_empty(&client->stage_cfg[p_info->stage_idx].sound_models)) {
+				pr_err("%s: sound_models list is empty\n",
+					__func__);
+				return -EINVAL;
 			}
 
 			list_for_each_entry(sm,
@@ -2885,7 +2892,7 @@ int q6lsm_lab_buffer_alloc(struct lsm_client *client, bool alloc)
 				out_params->period_count);
 			return -ENOMEM;
 		}
-		ret = msm_audio_ion_alloc(&client->lab_buffer[0].dma_buf,
+		ret = msm_audio_ion_alloc(&client->lab_buffer[0].mem_handle,
 			allocate_size, &client->lab_buffer[0].phys,
 			&len,
 			&client->lab_buffer[0].data);
@@ -2900,7 +2907,7 @@ int q6lsm_lab_buffer_alloc(struct lsm_client *client, bool alloc)
 				pr_err("%s: memory map filed ret %d size %zd\n",
 					__func__, ret, len);
 				msm_audio_ion_free(
-				client->lab_buffer[0].dma_buf);
+				client->lab_buffer[0].mem_handle);
 			}
 		}
 		if (ret) {
@@ -2932,7 +2939,7 @@ int q6lsm_lab_buffer_alloc(struct lsm_client *client, bool alloc)
 		ret = q6lsm_memory_unmap_regions(client,
 			client->lab_buffer[0].mem_map_handle);
 		if (!ret)
-			msm_audio_ion_free(client->lab_buffer[0].dma_buf);
+			msm_audio_ion_free(client->lab_buffer[0].mem_handle);
 		else
 			pr_err("%s: unmap failed not freeing memory\n",
 			__func__);
@@ -3121,12 +3128,10 @@ int __init q6lsm_init(void)
 #ifdef CONFIG_DEBUG_FS
 	lsm_common.entry = debugfs_create_dir("q6lsm_apr", NULL);
 	if (!IS_ERR_OR_NULL(lsm_common.entry)) {
-		if (IS_ERR(debugfs_create_bool("panic_on_timeout", 0644,
+		debugfs_create_bool("panic_on_timeout", 0644,
 					       lsm_common.entry,
-					       &lsm_common.panic_on_timeout)))
-			lsm_common.panic_on_timeout = false;
-		else
-			pr_info("%s: panic_on_timeout debugfs flag is created\n", __func__);
+					       &lsm_common.panic_on_timeout);
+		pr_info("%s: panic_on_timeout debugfs flag is created\n", __func__);
 	}
 #endif
 	return 0;

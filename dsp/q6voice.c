@@ -10,6 +10,7 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/mutex.h>
+#include <linux/qcom_scm.h>
 
 #include <soc/qcom/socinfo.h>
 
@@ -456,6 +457,7 @@ int voice_get_idx_for_session(u32 session_id)
 
 	return idx;
 }
+EXPORT_SYMBOL_GPL(voice_get_idx_for_session);
 
 static struct voice_data *voice_get_session_by_idx(int idx)
 {
@@ -1258,9 +1260,9 @@ static int voice_unmap_cal_block(struct voice_data *v, int cal_index)
 {
 	int result = 0;
 	struct cal_block_data *cal_block;
-	int dest_perms[1] = {PERM_READ | PERM_WRITE | PERM_EXEC};
-	int source_vm[2] = {VMID_LPASS, VMID_ADSP_HEAP};
-	int dest_vm[1] = {VMID_HLOS};
+	u64 src_vmid_list = BIT(VMID_LPASS) | BIT_ULL(VMID_ADSP_HEAP);
+        struct qcom_scm_vmperm dst_vmids[] = {{QCOM_SCM_VMID_HLOS,
+                PERM_READ | PERM_WRITE | PERM_EXEC}};
 
 	if (common.cal_data[cal_index] == NULL) {
 		pr_err("%s: Cal type is NULL, index %d!\n",
@@ -1302,11 +1304,11 @@ static int voice_unmap_cal_block(struct voice_data *v, int cal_index)
 			result = -EINVAL;
 			goto unlock;
 		}
-		result = hyp_assign_phys(cal_block->cal_data.paddr,
-					 cal_block->map_data.map_size,
-					 source_vm, 2, dest_vm, dest_perms, 1);
+		result = qcom_scm_assign_mem(cal_block->cal_data.paddr,
+                                         cal_block->map_data.map_size,
+                                         &src_vmid_list, dst_vmids, ARRAY_SIZE(dst_vmids));
 		if (result < 0) {
-			pr_err("%s: hyp_assign_phys failed result = %d addr = 0x%pK size = %d\n",
+			pr_err("%s: qcom_scm_assign_mem failed result = %d addr = 0x%pK size = %d\n",
 				__func__, result, cal_block->cal_data.paddr,
 				cal_block->map_data.map_size);
 			cal_block->map_data.q6map_handle = 0;
@@ -1314,7 +1316,7 @@ static int voice_unmap_cal_block(struct voice_data *v, int cal_index)
 			goto unlock;
 		}
 		hyp_assigned = false;
-		pr_debug("%s: hyp_assign_phys success\n", __func__);
+		pr_debug("%s: qcom_scm_assign_mem success\n", __func__);
 	}
 	cal_block->map_data.q6map_handle = 0;
 unlock:
@@ -1332,9 +1334,9 @@ static int voice_destroy_mvm_cvs_session(struct voice_data *v)
 	void *apr_mvm, *apr_cvs;
 	u16 mvm_handle, cvs_handle;
 	struct cal_block_data *cal_block;
-	int dest_perms[1] = {PERM_READ | PERM_WRITE | PERM_EXEC};
-	int source_vm[2] = {VMID_LPASS, VMID_ADSP_HEAP};
-	int dest_vm[1] = {VMID_HLOS};
+	u64 src_vmid_list = BIT(VMID_LPASS) | BIT_ULL(VMID_ADSP_HEAP);
+        struct qcom_scm_vmperm dst_vmids[] = {{QCOM_SCM_VMID_HLOS,
+                PERM_READ | PERM_WRITE | PERM_EXEC}};
 
 	if (v == NULL) {
 		pr_err("%s: v is NULL\n", __func__);
@@ -1538,12 +1540,11 @@ fail:
 				mutex_unlock(&common.cal_data[CVP_VOCPROC_CAL]->lock);
 				return -EINVAL;
 			}
-			result = hyp_assign_phys(
-					cal_block->cal_data.paddr,
-					cal_block->map_data.map_size,
-					source_vm, 2, dest_vm, dest_perms, 1);
+			result = qcom_scm_assign_mem(cal_block->cal_data.paddr,
+                                         cal_block->map_data.map_size,
+                                         &src_vmid_list, dst_vmids, ARRAY_SIZE(dst_vmids));
 			if (result < 0) {
-				pr_err("%s: hyp_assign_phys failed result = %d addr = 0x%pK size = %d\n",
+				pr_err("%s: qcom_scm_assign_mem failed result = %d addr = 0x%pK size = %d\n",
 					__func__, result,
 					cal_block->cal_data.paddr,
 					cal_block->map_data.map_size);
@@ -1551,7 +1552,7 @@ fail:
 				return -EINVAL;
 			}
 			hyp_assigned = false;
-			pr_debug("%s: hyp_assign_phys success\n", __func__);
+			pr_debug("%s: qcom_scm_assign_mem success\n", __func__);
 			mutex_unlock(&common.cal_data[CVP_VOCPROC_CAL]->lock);
 		}
 	}
@@ -2175,7 +2176,7 @@ static int is_cal_memory_allocated(void)
 {
 	bool ret;
 
-	if (common.cal_mem_map_table.dma_buf != NULL)
+	if (common.cal_mem_map_table.mem_handle != NULL)
 		ret = true;
 	else
 		ret = false;
@@ -2188,15 +2189,15 @@ static int free_cal_map_table(void)
 {
 	int ret = 0;
 
-	if (common.cal_mem_map_table.dma_buf == NULL)
+	if (common.cal_mem_map_table.mem_handle == NULL)
 		goto done;
 
-	ret = msm_audio_ion_free(common.cal_mem_map_table.dma_buf);
+	ret = msm_audio_ion_free(common.cal_mem_map_table.mem_handle);
 	if (ret < 0)
 		pr_err("%s: msm_audio_ion_free failed:\n", __func__);
 
 done:
-	common.cal_mem_map_table.dma_buf = NULL;
+	common.cal_mem_map_table.mem_handle = NULL;
 	return ret;
 }
 
@@ -2204,7 +2205,7 @@ static int is_rtac_memory_allocated(void)
 {
 	bool ret;
 
-	if (common.rtac_mem_map_table.dma_buf != NULL)
+	if (common.rtac_mem_map_table.mem_handle != NULL)
 		ret = true;
 	else
 		ret = false;
@@ -2216,15 +2217,15 @@ static int free_rtac_map_table(void)
 {
 	int ret = 0;
 
-	if (common.rtac_mem_map_table.dma_buf == NULL)
+	if (common.rtac_mem_map_table.mem_handle == NULL)
 		goto done;
 
-	ret = msm_audio_ion_free(common.rtac_mem_map_table.dma_buf);
+	ret = msm_audio_ion_free(common.rtac_mem_map_table.mem_handle);
 	if (ret < 0)
 		pr_err("%s: msm_audio_ion_free failed:\n", __func__);
 
 done:
-	common.rtac_mem_map_table.dma_buf = NULL;
+	common.rtac_mem_map_table.mem_handle = NULL;
 	return ret;
 }
 
@@ -2244,7 +2245,7 @@ static bool is_voip_memory_allocated(void)
 	}
 
 	mutex_lock(&common.common_lock);
-	if (v->shmem_info.sh_buf.dma_buf != NULL)
+	if (v->shmem_info.sh_buf.mem_handle != NULL)
 		ret = true;
 	else
 		ret = false;
@@ -2764,9 +2765,9 @@ static int voice_get_cal(struct cal_block_data **cal_block,
 			 int col_data_idx, int session_id)
 {
 	int ret = 0;
-	int dest_perms[2] = {PERM_READ | PERM_WRITE, PERM_READ | PERM_WRITE};
-	int source_vm[1] = {VMID_HLOS};
-	int dest_vm[2] = {VMID_LPASS, VMID_ADSP_HEAP};
+	u64 src_vmid_list = BIT(VMID_LPASS) | BIT_ULL(VMID_ADSP_HEAP);
+	struct qcom_scm_vmperm dst_vmids[] = {{QCOM_SCM_VMID_HLOS,
+		PERM_READ | PERM_WRITE | PERM_EXEC}};
 	*cal_block = cal_utils_get_only_cal_block(
 		common.cal_data[cal_block_idx]);
 	if (*cal_block == NULL) {
@@ -2785,18 +2786,18 @@ static int voice_get_cal(struct cal_block_data **cal_block,
 			ret = -EINVAL;
 			goto done;
 		}
-		ret = hyp_assign_phys((*cal_block)->cal_data.paddr,
-				      (*cal_block)->map_data.map_size,
-				      source_vm, 1, dest_vm, dest_perms, 2);
+		ret = qcom_scm_assign_mem((*cal_block)->cal_data.paddr,
+                                      (*cal_block)->map_data.map_size,
+                                      &src_vmid_list, dst_vmids, ARRAY_SIZE(dst_vmids));
 		if (ret < 0) {
-			pr_err("%s: hyp_assign_phys failed ret = %d addr = 0x%pK size = %d\n",
+			pr_err("%s: qcom_scm_assign_mem failed ret = %d addr = 0x%pK size = %d\n",
 				__func__, ret, (*cal_block)->cal_data.paddr,
 				(*cal_block)->map_data.map_size);
 			ret = -EINVAL;
 			goto done;
 		}
 		hyp_assigned = true;
-		pr_debug("%s: hyp_assign_phys success\n", __func__);
+		pr_debug("%s: qcom_scm_assign_mem  success\n", __func__);
 	}
 	ret = remap_cal_data(*cal_block, session_id);
 	if (ret < 0) {
@@ -3397,9 +3398,9 @@ static int voice_send_cvp_deregister_cal_cmd(struct voice_data *v)
 	int ret = 0;
 	int cal_index = CVP_VOCPROC_CAL;
 	struct cal_block_data *cal_block;
-	int dest_perms[1] = {PERM_READ | PERM_WRITE | PERM_EXEC};
-	int source_vm[2] = {VMID_LPASS, VMID_ADSP_HEAP};
-	int dest_vm[1] = {VMID_HLOS};
+	u64 src_vmid_list = BIT(VMID_LPASS) | BIT_ULL(VMID_ADSP_HEAP);
+        struct qcom_scm_vmperm dst_vmids[] = {{QCOM_SCM_VMID_HLOS,
+                PERM_READ | PERM_WRITE | PERM_EXEC}};
 
 	memset(&cvp_dereg_cal_cmd, 0, sizeof(cvp_dereg_cal_cmd));
 
@@ -3463,18 +3464,18 @@ static int voice_send_cvp_deregister_cal_cmd(struct voice_data *v)
 			ret = -EINVAL;
 			goto done;
 		}
-		ret = hyp_assign_phys(cal_block->cal_data.paddr,
-				      cal_block->map_data.map_size,
-				      source_vm, 2, dest_vm, dest_perms, 1);
+		ret = qcom_scm_assign_mem(cal_block->cal_data.paddr,
+                                      cal_block->map_data.map_size,
+                                      &src_vmid_list, dst_vmids, ARRAY_SIZE(dst_vmids));
 		if (ret < 0) {
-			pr_err("%s: hyp_assign_phys failed result = %d addr = 0x%pK size = %d\n",
+			pr_err("%s: qcom_scm_assign_mem failed result = %d addr = 0x%pK size = %d\n",
 				__func__, ret, cal_block->cal_data.paddr,
 				cal_block->map_data.map_size);
 			ret = -EINVAL;
 			goto done;
 		} else {
 			hyp_assigned = false;
-			pr_debug("%s: hyp_assign_phys success\n", __func__);
+			pr_debug("%s: qcom_scm_assign_mem success\n", __func__);
 		}
 	}
 
@@ -3908,7 +3909,7 @@ static int remap_cal_data(struct cal_block_data *cal_block,
 
 	pr_debug("%s\n", __func__);
 
-	if (cal_block->map_data.dma_buf == NULL) {
+	if (cal_block->map_data.mem_handle == NULL) {
 		pr_err("%s: No ION allocation for session_id %d!\n",
 			__func__, session_id);
 		ret = -EINVAL;
@@ -4123,7 +4124,7 @@ int voc_map_rtac_block(struct rtac_cal_block_data *cal_block)
 				&cal_block->cal_data.paddr,
 				cal_block->map_data.map_size);
 
-			common.rtac_mem_map_table.dma_buf = NULL;
+			common.rtac_mem_map_table.mem_handle = NULL;
 			goto done_unlock;
 		}
 	}
@@ -4614,43 +4615,46 @@ static int voice_setup_vocproc(struct voice_data *v)
 		goto fail;
 	}
 
-	if (common.is_avcs_version_queried == false)
-		common.cvp_version = voice_get_avcs_version_per_service(
-				     APRV2_IDS_SERVICE_ID_ADSP_CVP_V);
+	if (voice_get_cvd_int_version(common.cvd_version) !=
+			CVD_INT_VERSION_2_3) {
+		if (common.is_avcs_version_queried == false)
+			common.cvp_version = voice_get_avcs_version_per_service(
+					APRV2_IDS_SERVICE_ID_ADSP_CVP_V);
 
-	if (common.cvp_version < 0) {
-		pr_err("%s: Invalid CVP version %d\n",
-		       __func__, common.cvp_version);
-		ret = -EINVAL;
-		goto fail;
-	}
-	pr_debug("%s: CVP Version %d\n", __func__, common.cvp_version);
+		if (common.cvp_version < 0) {
+			pr_err("%s: Invalid CVP version %d\n",
+					__func__, common.cvp_version);
+			ret = -EINVAL;
+			goto fail;
+		}
+		pr_debug("%s: CVP Version %d\n", __func__, common.cvp_version);
 
-	ret = voice_send_cvp_media_fmt_info_cmd(v);
-	if (ret < 0) {
-		pr_err("%s: Set media format info failed err:%d\n", __func__,
-		       ret);
-		goto fail;
+		ret = voice_send_cvp_media_fmt_info_cmd(v);
+		if (ret < 0) {
+			pr_err("%s: Set media format info failed err:%d\n", __func__,
+					ret);
+			goto fail;
+		}
+
+		/* Send MFC config only when the no of channels are more than 1 */
+		if (v->dev_rx.no_of_channels > NUM_CHANNELS_MONO) {
+			ret = voice_send_cvp_mfc_config_cmd(v);
+			if (ret < 0) {
+				pr_warn("%s: Set mfc config failed err:%d\n",
+						__func__, ret);
+			}
+		}
+
+		mod_inst_info.module_id = MODULE_ID_VOICE_MODULE_ST;
+		mod_inst_info.instance_id = INSTANCE_ID_0;
 	}
 
 	ret = voice_send_cvp_topology_commit_cmd(v);
 	if (ret < 0) {
 		pr_err("%s: Set topology commit failed err:%d\n",
-		       __func__, ret);
+			__func__, ret);
 		goto fail;
 	}
-
-	/* Send MFC config only when the no of channels are more than 1 */
-	if (v->dev_rx.no_of_channels > NUM_CHANNELS_MONO) {
-		ret = voice_send_cvp_mfc_config_cmd(v);
-		if (ret < 0) {
-			pr_warn("%s: Set mfc config failed err:%d\n",
-				__func__, ret);
-		}
-	}
-
-	mod_inst_info.module_id = MODULE_ID_VOICE_MODULE_ST;
-	mod_inst_info.instance_id = INSTANCE_ID_0;
 
 	voice_send_cvs_register_cal_cmd(v);
 	voice_send_cvp_register_dev_cfg_cmd(v);
@@ -4806,6 +4810,10 @@ done:
 static int voice_send_cvp_media_fmt_info_cmd(struct voice_data *v)
 {
 	int ret = 0;
+
+	if (voice_get_cvd_int_version(common.cvd_version) ==
+			CVD_INT_VERSION_2_3)
+		goto done;
 
 	if (common.cvp_version < CVP_VERSION_2)
 		ret = voice_send_cvp_device_channels_cmd(v);
@@ -5827,7 +5835,7 @@ static int voice_send_vol_step_cmd(struct voice_data *v)
 	cvp_vol_step_cmd.cvp_set_vol_step.value = v->dev_rx.volume_step_value;
 	cvp_vol_step_cmd.cvp_set_vol_step.ramp_duration_ms =
 					v->dev_rx.volume_ramp_duration_ms;
-	 pr_debug("%s step_value:%d, ramp_duration_ms:%d",
+	pr_debug("%s step_value:%d, ramp_duration_ms:%d\n",
 			__func__,
 			cvp_vol_step_cmd.cvp_set_vol_step.value,
 			cvp_vol_step_cmd.cvp_set_vol_step.ramp_duration_ms);
@@ -7232,9 +7240,9 @@ int voc_disable_device(uint32_t session_id)
 	struct voice_data *v = voice_get_session(session_id);
 	int ret = 0, result = 0;
 	struct cal_block_data *cal_block;
-	int dest_perms[1] = {PERM_READ | PERM_WRITE | PERM_EXEC};
-	int source_vm[2] = {VMID_LPASS, VMID_ADSP_HEAP};
-	int dest_vm[1] = {VMID_HLOS};
+	u64 src_vmid_list = BIT(VMID_LPASS) | BIT_ULL(VMID_ADSP_HEAP);
+        struct qcom_scm_vmperm dst_vmids[] = {{QCOM_SCM_VMID_HLOS,
+                PERM_READ | PERM_WRITE | PERM_EXEC}};
 
 	if (v == NULL) {
 		pr_err("%s: v is NULL\n", __func__);
@@ -7287,12 +7295,11 @@ fail:
 				mutex_unlock(&common.cal_data[CVP_VOCPROC_CAL]->lock);
 				goto done;
 			}
-			result = hyp_assign_phys(
-					cal_block->cal_data.paddr,
+			ret = qcom_scm_assign_mem(cal_block->cal_data.paddr,
 					cal_block->map_data.map_size,
-					source_vm, 2, dest_vm, dest_perms, 1);
+					&src_vmid_list, dst_vmids, ARRAY_SIZE(dst_vmids));
 			if (result < 0) {
-				pr_err("%s: hyp_assign_phys failed result = %d addr = 0x%pK size = %d\n",
+				pr_err("%s: qcom_scm_assign_mem failed result = %d addr = 0x%pK size = %d\n",
 					__func__,
 					result,
 					cal_block->cal_data.paddr,
@@ -7302,7 +7309,7 @@ fail:
 				goto done;
 			}
 			hyp_assigned = false;
-			pr_debug("%s: hyp_assign_phys success\n", __func__);
+			pr_debug("%s: qcom_scm_assign_mem success\n", __func__);
 			mutex_unlock(&common.cal_data[CVP_VOCPROC_CAL]->lock);
 		}
 	}
@@ -7767,9 +7774,9 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 		/* Free the ION memory and clear handles for Source Tracking */
 		if (is_source_tracking_shared_memomry_allocated()) {
 			msm_audio_ion_free(
-			common.source_tracking_sh_mem.sh_mem_block.dma_buf);
+			common.source_tracking_sh_mem.sh_mem_block.mem_handle);
 			common.source_tracking_sh_mem.mem_handle = 0;
-			common.source_tracking_sh_mem.sh_mem_block.dma_buf =
+			common.source_tracking_sh_mem.sh_mem_block.mem_handle =
 									NULL;
 		}
 		/* clean up srvcc rec flag */
@@ -8009,9 +8016,9 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 		/* Free the ION memory and clear handles for Source Tracking */
 		if (is_source_tracking_shared_memomry_allocated()) {
 			msm_audio_ion_free(
-			common.source_tracking_sh_mem.sh_mem_block.dma_buf);
+			common.source_tracking_sh_mem.sh_mem_block.mem_handle);
 			common.source_tracking_sh_mem.mem_handle = 0;
-			common.source_tracking_sh_mem.sh_mem_block.dma_buf =
+			common.source_tracking_sh_mem.sh_mem_block.mem_handle =
 									NULL;
 		}
 		voc_set_error_state(data->reset_proc);
@@ -8027,6 +8034,11 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 
 	if (data->opcode == APR_BASIC_RSP_RESULT) {
 		if (data->payload_size) {
+			if (data->payload_size < (2*sizeof(uint32_t))) {
+				pr_err("%s: invalid payload_size, required: %d, actual: %d\n",
+						__func__, (2*sizeof(uint32_t)), data->payload_size);
+				return -EINVAL;
+			}
 			ptr = data->payload;
 
 			pr_debug("%x %x\n", ptr[0], ptr[1]);
@@ -8136,10 +8148,10 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 			VSS_ISTREAM_EVT_OOB_NOTIFY_ENC_BUFFER_CONSUMED;
 
 		cvs_voc_pkt = v->shmem_info.sh_buf.buf[1].data;
-
-		if (__builtin_add_overflow(cvs_voc_pkt[2], 3 * sizeof(uint32_t), &tot_buf_sz)) {
-			 pr_err("%s: integer overflow detected\n", __func__);
-			 return -EINVAL;
+		if (__builtin_add_overflow(cvs_voc_pkt[2],
+			3 * sizeof(uint32_t), &tot_buf_sz)) {
+			pr_err("%s: integer overflow detected\n", __func__);
+			return -EINVAL;
 		}
 
 		if (cvs_voc_pkt != NULL &&  common.mvs_info.ul_cb != NULL) {
@@ -8298,9 +8310,9 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 		 */
 		if (is_source_tracking_shared_memomry_allocated()) {
 			msm_audio_ion_free(
-			common.source_tracking_sh_mem.sh_mem_block.dma_buf);
+			common.source_tracking_sh_mem.sh_mem_block.mem_handle);
 			common.source_tracking_sh_mem.mem_handle = 0;
-			common.source_tracking_sh_mem.sh_mem_block.dma_buf =
+			common.source_tracking_sh_mem.sh_mem_block.mem_handle =
 									NULL;
 		}
 		voc_set_error_state(data->reset_proc);
@@ -8526,8 +8538,8 @@ static int voice_free_oob_shared_mem(void)
 		goto done;
 	}
 
-	rc = msm_audio_ion_free(v->shmem_info.sh_buf.dma_buf);
-	v->shmem_info.sh_buf.dma_buf = NULL;
+	rc = msm_audio_ion_free(v->shmem_info.sh_buf.mem_handle);
+	v->shmem_info.sh_buf.mem_handle = NULL;
 	if (rc < 0) {
 		pr_err("%s: Error:%d freeing memory\n", __func__, rc);
 
@@ -8541,7 +8553,7 @@ static int voice_free_oob_shared_mem(void)
 		cnt++;
 	}
 
-	v->shmem_info.sh_buf.dma_buf = NULL;
+	v->shmem_info.sh_buf.mem_handle = NULL;
 
 done:
 	mutex_unlock(&common.common_lock);
@@ -8568,7 +8580,7 @@ static int voice_alloc_oob_shared_mem(void)
 		goto done;
 	}
 
-	rc = msm_audio_ion_alloc(&(v->shmem_info.sh_buf.dma_buf),
+	rc = msm_audio_ion_alloc(&(v->shmem_info.sh_buf.mem_handle),
 			bufsz * bufcnt,
 			&phys, &len,
 			&mem_addr);
@@ -8620,7 +8632,7 @@ static int voice_alloc_oob_mem_table(void)
 		goto done;
 	}
 
-	rc = msm_audio_ion_alloc(&(v->shmem_info.memtbl.dma_buf),
+	rc = msm_audio_ion_alloc(&(v->shmem_info.memtbl.mem_handle),
 				sizeof(struct vss_imemory_table_t),
 				&v->shmem_info.memtbl.phys,
 				&len,
@@ -9007,7 +9019,7 @@ static int voice_alloc_cal_mem_map_table(void)
 	int ret = 0;
 	size_t len;
 
-	ret = msm_audio_ion_alloc(&(common.cal_mem_map_table.dma_buf),
+	ret = msm_audio_ion_alloc(&(common.cal_mem_map_table.mem_handle),
 				sizeof(struct vss_imemory_table_t),
 				&common.cal_mem_map_table.phys,
 				&len,
@@ -9034,7 +9046,7 @@ static int voice_alloc_rtac_mem_map_table(void)
 	size_t len;
 
 	ret = msm_audio_ion_alloc(
-			&(common.rtac_mem_map_table.dma_buf),
+			&(common.rtac_mem_map_table.mem_handle),
 			sizeof(struct vss_imemory_table_t),
 			&common.rtac_mem_map_table.phys,
 			&len,
@@ -9750,7 +9762,7 @@ static bool is_source_tracking_shared_memomry_allocated(void)
 
 	pr_debug("%s: Enter\n", __func__);
 
-	if (common.source_tracking_sh_mem.sh_mem_block.dma_buf != NULL)
+	if (common.source_tracking_sh_mem.sh_mem_block.mem_handle != NULL)
 		ret = true;
 	else
 		ret = false;
@@ -9767,7 +9779,7 @@ static int voice_alloc_source_tracking_shared_memory(void)
 	pr_debug("%s: Enter\n", __func__);
 
 	ret = msm_audio_ion_alloc(
-		&(common.source_tracking_sh_mem.sh_mem_block.dma_buf),
+		&(common.source_tracking_sh_mem.sh_mem_block.mem_handle),
 		BUFFER_BLOCK_SIZE,
 		&(common.source_tracking_sh_mem.sh_mem_block.phys),
 		(size_t *)&(common.source_tracking_sh_mem.sh_mem_block.size),
@@ -9789,7 +9801,7 @@ static int voice_alloc_source_tracking_shared_memory(void)
 		(size_t)(common.source_tracking_sh_mem.sh_mem_block.size));
 
 	ret = msm_audio_ion_alloc(
-		&(common.source_tracking_sh_mem.sh_mem_table.dma_buf),
+		&(common.source_tracking_sh_mem.sh_mem_table.mem_handle),
 		sizeof(struct vss_imemory_table_t),
 		&(common.source_tracking_sh_mem.sh_mem_table.phys),
 		(size_t *)&(common.source_tracking_sh_mem.sh_mem_table.size),
@@ -9799,8 +9811,8 @@ static int voice_alloc_source_tracking_shared_memory(void)
 			__func__, ret);
 
 		ret = msm_audio_ion_free(
-			common.source_tracking_sh_mem.sh_mem_block.dma_buf);
-		common.source_tracking_sh_mem.sh_mem_block.dma_buf = NULL;
+			common.source_tracking_sh_mem.sh_mem_block.mem_handle);
+		common.source_tracking_sh_mem.sh_mem_block.mem_handle = NULL;
 		if (ret < 0)
 			pr_err("%s: Error:%d freeing memory\n", __func__, ret);
 
@@ -9876,11 +9888,11 @@ static int voice_unmap_and_free_source_tracking_shared_memory(
 		}
 	}
 
-	if (common.source_tracking_sh_mem.sh_mem_block.dma_buf == NULL)
+	if (common.source_tracking_sh_mem.sh_mem_block.mem_handle == NULL)
 		goto done;
 
 	ret = msm_audio_ion_free(
-			common.source_tracking_sh_mem.sh_mem_block.dma_buf);
+			common.source_tracking_sh_mem.sh_mem_block.mem_handle);
 	if (ret < 0) {
 		pr_err("%s: Error:%d freeing memory\n", __func__, ret);
 
@@ -9890,7 +9902,7 @@ static int voice_unmap_and_free_source_tracking_shared_memory(
 
 done:
 	common.source_tracking_sh_mem.mem_handle = 0;
-	common.source_tracking_sh_mem.sh_mem_block.dma_buf = NULL;
+	common.source_tracking_sh_mem.sh_mem_block.mem_handle = NULL;
 	pr_debug("%s: Exit, ret=%d\n", __func__, ret);
 
 	return ret;
@@ -10440,7 +10452,7 @@ int __init voice_init(void)
 	/* set default value */
 	common.default_mute_val = 0;  /* default is un-mute */
 	common.default_sample_val = 8000;
-	common.default_vol_step_val = 0;
+	common.default_vol_step_val = 1;
 	common.default_vol_ramp_duration_ms = DEFAULT_VOLUME_RAMP_DURATION;
 	common.default_mute_ramp_duration_ms = DEFAULT_MUTE_RAMP_DURATION;
 	common.cvp_version = 0;
@@ -10546,6 +10558,8 @@ int __init voice_init(void)
 		module_initialized = true;
 		hyp_assigned = false;
 	}
+
+	voc_get_cvd_version(common.cvd_version);
 
 	pr_debug("%s: rc=%d\n", __func__, rc);
 	return rc;

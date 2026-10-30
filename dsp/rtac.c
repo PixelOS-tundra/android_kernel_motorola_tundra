@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/fs.h>
@@ -10,7 +11,7 @@
 #include <linux/uaccess.h>
 #include <linux/mutex.h>
 #include <linux/sched.h>
-#include <audio/linux/msm_audio_calibration.h>
+#include <linux/msm_audio_calibration.h>
 #include <linux/atomic.h>
 #include <linux/compat.h>
 #include <dsp/msm_audio_ion.h>
@@ -154,7 +155,7 @@ int rtac_allocate_cal_buffer(uint32_t cal_type)
 		goto done;
 	}
 
-	result = msm_audio_ion_alloc(&rtac_cal[cal_type].map_data.dma_buf,
+	result = msm_audio_ion_alloc(&rtac_cal[cal_type].map_data.mem_handle,
 		rtac_cal[cal_type].map_data.map_size,
 		&rtac_cal[cal_type].cal_data.paddr,
 		&len,
@@ -188,13 +189,13 @@ int rtac_free_cal_buffer(uint32_t cal_type)
 		goto done;
 	}
 
-	if (rtac_cal[cal_type].map_data.dma_buf == NULL) {
+	if (rtac_cal[cal_type].map_data.mem_handle == NULL) {
 		pr_debug("%s: cal_type %d not allocated!\n",
 		       __func__, cal_type);
 		goto done;
 	}
 
-	result = msm_audio_ion_free(rtac_cal[cal_type].map_data.dma_buf);
+	result = msm_audio_ion_free(rtac_cal[cal_type].map_data.mem_handle);
 	if (result < 0) {
 		pr_err("%s: ION free for RTAC failed! cal_type %d, paddr 0x%pK\n",
 		       __func__, cal_type, &rtac_cal[cal_type].cal_data.paddr);
@@ -202,7 +203,7 @@ int rtac_free_cal_buffer(uint32_t cal_type)
 	}
 
 	rtac_cal[cal_type].map_data.map_handle = 0;
-	rtac_cal[cal_type].map_data.dma_buf = NULL;
+	rtac_cal[cal_type].map_data.mem_handle = NULL;
 	rtac_cal[cal_type].cal_data.size = 0;
 	rtac_cal[cal_type].cal_data.kvaddr = 0;
 	rtac_cal[cal_type].cal_data.paddr = 0;
@@ -746,7 +747,7 @@ int send_adm_apr(void *buf, u32 opcode)
 
 	pr_debug("%s\n", __func__);
 
-	if (rtac_cal[ADM_RTAC_CAL].map_data.dma_buf == NULL) {
+	if (rtac_cal[ADM_RTAC_CAL].map_data.mem_handle == NULL) {
 		result = rtac_allocate_cal_buffer(ADM_RTAC_CAL);
 		if (result < 0) {
 			pr_err("%s: allocate buffer failed!",
@@ -983,7 +984,7 @@ int send_rtac_asm_apr(void *buf, u32 opcode)
 
 	pr_debug("%s\n", __func__);
 
-	if (rtac_cal[ASM_RTAC_CAL].map_data.dma_buf == NULL) {
+	if (rtac_cal[ASM_RTAC_CAL].map_data.mem_handle == NULL) {
 		result = rtac_allocate_cal_buffer(ASM_RTAC_CAL);
 		if (result < 0) {
 			pr_err("%s: allocate buffer failed!",
@@ -1259,7 +1260,7 @@ static int send_rtac_afe_apr(void __user *buf, uint32_t opcode)
 
 	pr_debug("%s\n", __func__);
 
-	if (rtac_cal[AFE_RTAC_CAL].map_data.dma_buf == NULL) {
+	if (rtac_cal[AFE_RTAC_CAL].map_data.mem_handle == NULL) {
 		result = rtac_allocate_cal_buffer(AFE_RTAC_CAL);
 		if (result < 0) {
 			pr_err("%s: allocate buffer failed! ret = %d\n",
@@ -1545,7 +1546,7 @@ int send_voice_apr(u32 mode, void *buf, u32 opcode)
 
 	pr_debug("%s\n", __func__);
 
-	if (rtac_cal[VOICE_RTAC_CAL].map_data.dma_buf == NULL) {
+	if (rtac_cal[VOICE_RTAC_CAL].map_data.mem_handle == NULL) {
 		result = rtac_allocate_cal_buffer(VOICE_RTAC_CAL);
 		if (result < 0) {
 			pr_err("%s: allocate buffer failed!",
@@ -1996,7 +1997,7 @@ int __init rtac_init(void)
 	mutex_init(&rtac_adm_mutex);
 	mutex_init(&rtac_adm_apr_mutex);
 
-	rtac_adm_buffer = kzalloc(
+	rtac_adm_buffer = kvzalloc(
 		rtac_cal[ADM_RTAC_CAL].map_data.map_size, GFP_KERNEL);
 	if (rtac_adm_buffer == NULL)
 		goto nomem;
@@ -2009,10 +2010,10 @@ int __init rtac_init(void)
 	}
 	mutex_init(&rtac_asm_apr_mutex);
 
-	rtac_asm_buffer = kzalloc(
+	rtac_asm_buffer = kvzalloc(
 		rtac_cal[ASM_RTAC_CAL].map_data.map_size, GFP_KERNEL);
 	if (rtac_asm_buffer == NULL) {
-		kzfree(rtac_adm_buffer);
+		kvfree(rtac_adm_buffer);
 		goto nomem;
 	}
 
@@ -2022,11 +2023,11 @@ int __init rtac_init(void)
 	init_waitqueue_head(&rtac_afe_apr_data.cmd_wait);
 	mutex_init(&rtac_afe_apr_mutex);
 
-	rtac_afe_buffer = kzalloc(
+	rtac_afe_buffer = kvzalloc(
 		rtac_cal[AFE_RTAC_CAL].map_data.map_size, GFP_KERNEL);
 	if (rtac_afe_buffer == NULL) {
-		kzfree(rtac_adm_buffer);
-		kzfree(rtac_asm_buffer);
+		kvfree(rtac_adm_buffer);
+		kvfree(rtac_asm_buffer);
 		goto nomem;
 	}
 
@@ -2040,20 +2041,20 @@ int __init rtac_init(void)
 	mutex_init(&rtac_voice_mutex);
 	mutex_init(&rtac_voice_apr_mutex);
 
-	rtac_voice_buffer = kzalloc(
+	rtac_voice_buffer = kvzalloc(
 		rtac_cal[VOICE_RTAC_CAL].map_data.map_size, GFP_KERNEL);
 	if (rtac_voice_buffer == NULL) {
-		kzfree(rtac_adm_buffer);
-		kzfree(rtac_asm_buffer);
-		kzfree(rtac_afe_buffer);
+		kvfree(rtac_adm_buffer);
+		kvfree(rtac_asm_buffer);
+		kvfree(rtac_afe_buffer);
 		goto nomem;
 	}
 
 	if (misc_register(&rtac_misc) != 0) {
-		kzfree(rtac_adm_buffer);
-		kzfree(rtac_asm_buffer);
-		kzfree(rtac_afe_buffer);
-		kzfree(rtac_voice_buffer);
+		kvfree(rtac_adm_buffer);
+		kvfree(rtac_asm_buffer);
+		kvfree(rtac_afe_buffer);
+		kvfree(rtac_voice_buffer);
 		goto nomem;
 	}
 
@@ -2065,10 +2066,10 @@ nomem:
 void rtac_exit(void)
 {
 	misc_deregister(&rtac_misc);
-	kzfree(rtac_adm_buffer);
-	kzfree(rtac_asm_buffer);
-	kzfree(rtac_afe_buffer);
-	kzfree(rtac_voice_buffer);
+	kvfree(rtac_adm_buffer);
+	kvfree(rtac_asm_buffer);
+	kvfree(rtac_afe_buffer);
+	kvfree(rtac_voice_buffer);
 	mutex_destroy(&rtac_voice_apr_mutex);
 	mutex_destroy(&rtac_voice_mutex);
 	mutex_destroy(&rtac_afe_apr_mutex);

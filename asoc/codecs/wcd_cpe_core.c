@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -188,6 +189,7 @@ done:
 static int wcd_cpe_collect_ramdump(struct wcd_cpe_core *core)
 {
 	struct cpe_svc_mem_segment dump_seg;
+	struct list_head head;
 	int rc;
 
 	if (!core->cpe_ramdump_dev || !core->cpe_dump_v_addr ||
@@ -219,16 +221,20 @@ static int wcd_cpe_collect_ramdump(struct wcd_cpe_core *core)
 		"%s: completed reading ramdump from CPE\n",
 		__func__);
 
-	core->cpe_ramdump_seg.address = (unsigned long) core->cpe_dump_addr;
+	memset(&core->cpe_ramdump_seg, 0, sizeof(core->cpe_ramdump_seg));
+	core->cpe_ramdump_seg.da = (unsigned long) core->cpe_dump_addr;
 	core->cpe_ramdump_seg.size = core->hw_info.dram_size;
-	core->cpe_ramdump_seg.v_address = core->cpe_dump_v_addr;
+	core->cpe_ramdump_seg.va = core->cpe_dump_v_addr;
+	INIT_LIST_HEAD(&head);
+	list_add(&core->cpe_ramdump_seg.node, &head);
+	if (core->cpe_ramdump_dev && dump_enabled()) {
+		rc = qcom_dump(&head, core->cpe_ramdump_dev);
+		if (rc)
+			dev_err(core->dev,
+				"%s: fail to dump cpe ram to device, err = %d\n",
+				__func__, rc);
+	}
 
-	rc = do_ramdump(core->cpe_ramdump_dev,
-			&core->cpe_ramdump_seg, 1);
-	if (rc)
-		dev_err(core->dev,
-			"%s: fail to dump cpe ram to device, err = %d\n",
-			__func__, rc);
 	return rc;
 }
 

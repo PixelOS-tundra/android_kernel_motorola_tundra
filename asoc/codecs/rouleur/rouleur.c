@@ -25,7 +25,7 @@
 #include "rouleur-registers.h"
 #include "pm2250-spmi.h"
 #include <asoc/msm-cdc-pinctrl.h>
-#include <dt-bindings/sound/audio-codec-port-types.h>
+#include <bindings/audio-codec-port-types.h>
 #include <asoc/msm-cdc-supply.h>
 #include <linux/power_supply.h>
 #include "asoc/bolero-slave-internal.h"
@@ -1119,7 +1119,7 @@ static int rouleur_codec_enable_adc(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
 		/* Enable BCS for Headset mic */
-		if (w->shift == 1 && !(snd_soc_component_read32(component,
+		if (w->shift == 1 && !(snd_soc_component_read(component,
 				ROULEUR_ANA_TX_AMIC2) & 0x10)) {
 			rouleur_tx_connect_port(component, MBHC, true);
 			set_bit(AMIC2_BCS_ENABLE, &rouleur->status_mask);
@@ -1196,12 +1196,12 @@ int rouleur_mbhc_micb_adjust_voltage(struct snd_soc_component *component,
 	micb_reg = ROULEUR_ANA_MICBIAS_MICB_1_2_EN;
 	switch (micb_num) {
 	case MIC_BIAS_1:
-		micb_val = snd_soc_component_read32(component, micb_reg);
+		micb_val = snd_soc_component_read(component, micb_reg);
 		micb_en = (micb_val & 0x40) >> 6;
 		pullup_mask = 0x20;
 		break;
 	case MIC_BIAS_2:
-		micb_val = snd_soc_component_read32(component, micb_reg);
+		micb_val = snd_soc_component_read(component, micb_reg);
 		micb_en = (micb_val & 0x04) >> 2;
 		pullup_mask = 0x02;
 		break;
@@ -1221,7 +1221,7 @@ int rouleur_mbhc_micb_adjust_voltage(struct snd_soc_component *component,
 	 * momentarily, change the micbias value and then re-enable
 	 * micbias.
 	 */
-	cur_vout_ctl = (snd_soc_component_read32(component,
+	cur_vout_ctl = (snd_soc_component_read(component,
 				ROULEUR_ANA_MICBIAS_LDO_1_SETTING)) & 0xF8;
 	cur_vout_ctl = cur_vout_ctl >> 3;
 	req_vout_ctl = rouleur_get_micb_vout_ctl_val(req_volt);
@@ -1441,7 +1441,7 @@ static bool get_usbc_hs_status(struct snd_soc_component *component,
 			       struct wcd_mbhc_config *mbhc_cfg)
 {
 	if (mbhc_cfg->enable_usbc_analog) {
-		if (!(snd_soc_component_read32(component, ROULEUR_ANA_MBHC_MECH)
+		if (!(snd_soc_component_read(component, ROULEUR_ANA_MBHC_MECH)
 			& 0x20))
 			return true;
 	}
@@ -1480,8 +1480,12 @@ static int rouleur_event_notify(struct notifier_block *block,
 		rouleur->dev_up = false;
 		rouleur->mbhc->wcd_mbhc.deinit_in_progress = true;
 		mbhc = &rouleur->mbhc->wcd_mbhc;
-		rouleur->usbc_hs_status = get_usbc_hs_status(component,
+		if(!mbhc->mbhc_cfg) {
+			rouleur->usbc_hs_status = false;
+		} else {
+			rouleur->usbc_hs_status = get_usbc_hs_status(component,
 						mbhc->mbhc_cfg);
+		}
 		rouleur_mbhc_ssr_down(rouleur->mbhc, component);
 		rouleur_reset(rouleur->dev, 0x01);
 		break;
@@ -1782,10 +1786,10 @@ static const struct snd_soc_dapm_widget rouleur_dapm_widgets[] = {
 
 	/*tx widgets*/
 	SND_SOC_DAPM_ADC_E("ADC1", NULL, SND_SOC_NOPM, 0, 0,
-				rouleur_codec_enable_adc,
+				rouleur_tx_swr_ctrl,
 				SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_ADC_E("ADC2", NULL, SND_SOC_NOPM, 1, 0,
-				rouleur_codec_enable_adc,
+	SND_SOC_DAPM_ADC_E("ADC2", NULL, SND_SOC_NOPM, 0, 0,
+				rouleur_tx_swr_ctrl,
 				SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 
 	SND_SOC_DAPM_MUX("ADC2 MUX", SND_SOC_NOPM, 0, 0,
@@ -1794,11 +1798,11 @@ static const struct snd_soc_dapm_widget rouleur_dapm_widgets[] = {
 	/*tx mixers*/
 	SND_SOC_DAPM_MIXER_E("ADC1_MIXER", SND_SOC_NOPM, 0, 0,
 				adc1_switch, ARRAY_SIZE(adc1_switch),
-				rouleur_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
+				rouleur_codec_enable_adc, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_MIXER_E("ADC2_MIXER", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_MIXER_E("ADC2_MIXER", SND_SOC_NOPM, 1, 0,
 				adc2_switch, ARRAY_SIZE(adc2_switch),
-				rouleur_tx_swr_ctrl, SND_SOC_DAPM_PRE_PMU |
+				rouleur_codec_enable_adc, SND_SOC_DAPM_PRE_PMU |
 				SND_SOC_DAPM_POST_PMD),
 
 	/* micbias widgets*/
@@ -2639,14 +2643,14 @@ static int rouleur_bind(struct device *dev)
 	 * soundwire auto enumeration of slave devices as
 	 * as per HW requirement.
 	 */
-	usleep_range(5000, 5010);
+	usleep_range(15000, 15010);
 	rouleur->wakeup = rouleur_wakeup;
 
 	ret = component_bind_all(dev, rouleur);
 	if (ret) {
 		dev_err(dev, "%s: Slave bind failed, ret = %d\n",
 			__func__, ret);
-		goto err_bind_all;
+		goto err_disable;
 	}
 
 	ret = rouleur_parse_port_mapping(dev, "qcom,rx_swr_ch_map", CODEC_RX);
@@ -2735,6 +2739,9 @@ err_irq:
 	mutex_destroy(&rouleur->rx_clk_lock);
 err:
 	component_unbind_all(dev, rouleur);
+err_disable:
+	msm_cdc_disable_static_supplies(dev, rouleur->supplies,
+					pdata->regulator, pdata->num_supplies);
 err_bind_all:
 	dev_set_drvdata(dev, NULL);
 	kfree(pdata);

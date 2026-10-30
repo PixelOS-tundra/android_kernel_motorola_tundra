@@ -6,13 +6,21 @@ else
 	KERNEL_BUILD := 0
 endif
 
-
-
 ifeq ($(KERNEL_BUILD), 1)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
-	AUDIO_BLD_DIR := $(ANDROID_BUILD_TOP)/kernel/msm-4.19
-	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+	ifeq  ($(TARGET_SUPPORT), sa410m)
+		AUDIO_ROOT := $(shell pwd)/../../../../vendor/qcom/opensource/audio-kernel
+	else
+		AUDIO_BLD_DIR := $(ANDROID_BUILD_TOP)/kernel/msm-4.19
+		AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+	endif
+endif
+
+ifeq ($(TARGET_SUPPORT), sa410m)
+	include $(AUDIO_ROOT)/config/sa410mauto.conf
+	export
+	INCS    +=  -include $(AUDIO_ROOT)/config/sa410mautoconf.h
 endif
 
 ifeq ($(KERNEL_BUILD), 0)

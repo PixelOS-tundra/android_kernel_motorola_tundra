@@ -3,6 +3,7 @@
  * Copyright (C) 2008 Google, Inc.
  * Copyright (C) 2008 HTC Corporation
  * Copyright (c) 2012-2017, 2019, 2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_PCM_H
@@ -15,6 +16,10 @@
 /* Support unconventional sample rates 12000, 24000 as well */
 #define USE_RATE                \
 			(SNDRV_PCM_RATE_8000_48000 | SNDRV_PCM_RATE_KNOT)
+
+/* Max wait time for pcm availability in sec */
+#define MSM_PCM_CAPTURE_MAX_WAIT        4
+#define MSM_PCM_PLAYBACK_MAX_WAIT       4
 
 extern int copy_count;
 

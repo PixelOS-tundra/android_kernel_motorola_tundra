@@ -39,7 +39,7 @@ endif
 # config.
 
 ############ UAPI ############
-UAPI_DIR :=	uapi/audio
+UAPI_DIR :=	uapi
 UAPI_INC :=	-I$(AUDIO_ROOT)/include/$(UAPI_DIR)
 
 ############ COMMON ############

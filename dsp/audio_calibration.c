@@ -10,6 +10,7 @@
 #include <linux/uaccess.h>
 #include <linux/mutex.h>
 #include <linux/msm_ion.h>
+#include <linux/compat.h>
 #include <dsp/msm_audio_ion.h>
 #include <dsp/audio_calibration.h>
 #include <dsp/audio_cal_utils.h>

@@ -1,10 +1,29 @@
+ifeq ($(QTI_TECHPACK), true)
+AUDIO_KERNEL_PATH=$(PWD)/../../../vendor/qcom/opensource/audio-kernel/
+AUDIO_ROOT=$(AUDIO_KERNEL_PATH)
+# Use USERINCLUDE when you must reference the UAPI directories only.
+USERINCLUDE     += \
+                -I$(AUDIO_KERNEL_PATH)/include/uapi
+
+# Use LINUXINCLUDE when you must reference the include/ directory.
+# Needed to be compatible with the O= option
+INCS    += \
+                -I$(AUDIO_KERNEL_PATH)/include/uapi \
+                -I$(AUDIO_KERNEL_PATH)/include/asoc \
+                -I$(AUDIO_KERNEL_PATH)/include
+
+KBUILD_OPTIONS := AUDIO_ROOT=$(AUDIO_KERNEL_PATH)
+else
 AUDIO_ROOT=$(PWD)
 UAPI_OUT=$(PWD)
 KERNEL_BINARY_DIR=$(KERNEL_SRC)/../kernel-build-artifacts
 
 KBUILD_OPTIONS := AUDIO_ROOT=$(PWD)
-KBUILD_OPTIONS += MODNAME=audio
 KBUILD_OPTIONS += UAPI_OUT=$(PWD)
+subdir-ccflags-y += -I$(AUDIO_ROOT)/include/uapi/
+endif
+
+KBUILD_OPTIONS += MODNAME=audio
 
 ifeq ($(TARGET_SUPPORT),qcs40x)
 KBUILD_OPTIONS += CONFIG_ARCH_QCS405=y
@@ -22,7 +41,11 @@ ifeq ($(TARGET_SUPPORT), qcs6490)
 KBUILD_OPTIONS += CONFIG_ARCH_LAHAINA=y
 endif
 
-subdir-ccflags-y += -I$(AUDIO_ROOT)/include/uapi/
+ifeq ($(TARGET_SUPPORT), sa410m)
+KBUILD_OPTIONS += CONFIG_ARCH_SA410M=y
+endif
+
+
 
 obj-m := ipc/
 obj-m += dsp/
@@ -63,7 +86,7 @@ obj-m += asoc/codecs/bolero/
 obj-m += asoc/codecs/wcd937x/
 endif
 
-ifeq ($(TARGET_SUPPORT), $(filter $(TARGET_SUPPORT), sa8155 sa8155ivi sa6155 sa8195 qtiquingvm qtiquingvm8295 sa8295))
+ifeq ($(TARGET_SUPPORT), $(filter $(TARGET_SUPPORT), sa8155 sa8155ivi sa6155 sa8195 qtiquingvm qtiquingvm8295 sa8295 qtigvmi3 sa410m))
 KBUILD_OPTIONS += CONFIG_SND_SOC_AUTO=y
 obj-m := ipc/
 obj-m += dsp/
@@ -82,6 +105,15 @@ endif
 ifeq ($(TARGET_SUPPORT), $(filter $(TARGET_SUPPORT), qtiquingvm8295))
 KBUILD_OPTIONS += CONFIG_SND_SOC_GVM_SA8295=m
 endif
+ifeq ($(TARGET_SUPPORT), $(filter $(TARGET_SUPPORT), kona))
+KBUILD_OPTIONS += CONFIG_SND_SOC_GVM_KONA=m
+endif
+endif
+
+ifeq ($(TARGET_SUPPORT), $(filter $(TARGET_SUPPORT), sa410m))
+obj-m += asoc/codecs/rouleur/
+obj-m += asoc/codecs/bolero/
+KBUILD_CFLAGS += -Wno-error
 endif
 ifeq ($(AR_SUPPORT), $(filter $(AR_SUPPORT), yes))
 obj-m := ipc/
@@ -93,6 +125,7 @@ KBUILD_OPTIONS += CONFIG_SND_SOC_AUTO=y
 KBUILD_OPTIONS += CONFIG_SND_SOC_AR=m
 endif
 all:
+ifneq ($(QTI_TECHPACK), true)
 	$(shell rm -fr $(shell pwd)/soc/core.h)
 	$(shell ln -s $(KERNEL_SRC)/drivers/pinctrl/core.h $(shell pwd)/soc/core.h)
 	$(shell rm -fr $(shell pwd)/include/soc/internal.h)
@@ -105,45 +138,54 @@ all:
 	$(shell mkdir -p $(shell pwd)/sound)
 	$(shell mkdir -p $(shell pwd)/linux/mfd)
 	$(shell mkdir -p $(shell pwd)/linux/mfd/wcd9xxx)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/avtimer.h $(UAPI_OUT)/linux/avtimer.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_aac.h $(UAPI_OUT)/linux/msm_audio_aac.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_ac3.h $(UAPI_OUT)/linux/msm_audio_ac3.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_alac.h $(UAPI_OUT)/linux/msm_audio_alac.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_amrnb.h $(UAPI_OUT)/linux/msm_audio_amrnb.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_amrwb.h $(UAPI_OUT)/linux/msm_audio_amrwb.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_amrwbplus.h $(UAPI_OUT)/linux/msm_audio_amrwbplus.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_ape.h $(UAPI_OUT)/linux/msm_audio_ape.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_calibration.h $(UAPI_OUT)/linux/msm_audio_calibration.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_g711_dec.h $(UAPI_OUT)/linux/msm_audio_g711_dec.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_g711.h $(UAPI_OUT)/linux/msm_audio_g711.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio.h $(UAPI_OUT)/linux/msm_audio.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_mvs.h $(UAPI_OUT)/linux/msm_audio_mvs.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_qcp.h $(UAPI_OUT)/linux/msm_audio_qcp.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_sbc.h $(UAPI_OUT)/linux/msm_audio_sbc.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_voicememo.h $(UAPI_OUT)/linux/msm_audio_voicememo.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_wma.h $(UAPI_OUT)/linux/msm_audio_wma.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/msm_audio_wmapro.h $(UAPI_OUT)/linux/msm_audio_wmapro.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/wcd-spi-ac-params.h $(UAPI_OUT)/linux/wcd-spi-ac-params.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/mfd/wcd9xxx/wcd9320_registers.h $(UAPI_OUT)/linux/mfd/wcd9xxx/wcd9320_registers.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/linux/mfd/wcd9xxx/wcd9xxx_registers.h $(UAPI_OUT)/linux/mfd/wcd9xxx/wcd9xxx_registers.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/sound/audio_compressed_formats.h $(UAPI_OUT)/sound/audio_compressed_formats.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/sound/audio_effects.h $(UAPI_OUT)/sound/audio_effects.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/sound/audio_slimslave.h $(UAPI_OUT)/sound/audio_slimslave.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/sound/devdep_params.h $(UAPI_OUT)/sound/devdep_params.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/sound/lsm_params.h $(UAPI_OUT)/sound/lsm_params.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/sound/msmcal-hwdep.h $(UAPI_OUT)/sound/msmcal-hwdep.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/sound/voice_params.h $(UAPI_OUT)/sound/voice_params.h)
-	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/audio/sound/wcd-dsp-glink.h $(UAPI_OUT)/sound/wcd-dsp-glink.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/avtimer.h $(UAPI_OUT)/linux/avtimer.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_aac.h $(UAPI_OUT)/linux/msm_audio_aac.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_ac3.h $(UAPI_OUT)/linux/msm_audio_ac3.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_alac.h $(UAPI_OUT)/linux/msm_audio_alac.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_amrnb.h $(UAPI_OUT)/linux/msm_audio_amrnb.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_amrwb.h $(UAPI_OUT)/linux/msm_audio_amrwb.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_amrwbplus.h $(UAPI_OUT)/linux/msm_audio_amrwbplus.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_ape.h $(UAPI_OUT)/linux/msm_audio_ape.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_calibration.h $(UAPI_OUT)/linux/msm_audio_calibration.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_g711_dec.h $(UAPI_OUT)/linux/msm_audio_g711_dec.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_g711.h $(UAPI_OUT)/linux/msm_audio_g711.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio.h $(UAPI_OUT)/linux/msm_audio.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_mvs.h $(UAPI_OUT)/linux/msm_audio_mvs.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_qcp.h $(UAPI_OUT)/linux/msm_audio_qcp.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_sbc.h $(UAPI_OUT)/linux/msm_audio_sbc.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_voicememo.h $(UAPI_OUT)/linux/msm_audio_voicememo.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_wma.h $(UAPI_OUT)/linux/msm_audio_wma.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm_audio_wmapro.h $(UAPI_OUT)/linux/msm_audio_wmapro.h)
+	 $(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm-dolby-common.h $(UAPI_OUT)/linux/msm-dolby-common.h)
+	 $(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/msm-ds2-dap-config.h $(UAPI_OUT)/linux/msm-ds2-dap-config.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/usf.h $(UAPI_OUT)/linux/usf.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/wcd-spi-ac-params.h $(UAPI_OUT)/linux/wcd-spi-ac-params.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/mfd/wcd9xxx/wcd9320_registers.h $(UAPI_OUT)/linux/mfd/wcd9xxx/wcd9320_registers.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/linux/mfd/wcd9xxx/wcd9xxx_registers.h $(UAPI_OUT)/linux/mfd/wcd9xxx/wcd9xxx_registers.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/sound/audio_compressed_formats.h $(UAPI_OUT)/sound/audio_compressed_formats.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/sound/audio_effects.h $(UAPI_OUT)/sound/audio_effects.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/sound/audio_slimslave.h $(UAPI_OUT)/sound/audio_slimslave.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/sound/devdep_params.h $(UAPI_OUT)/sound/devdep_params.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/sound/lsm_params.h $(UAPI_OUT)/sound/lsm_params.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/sound/msmcal-hwdep.h $(UAPI_OUT)/sound/msmcal-hwdep.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/sound/voice_params.h $(UAPI_OUT)/sound/voice_params.h)
+	$(shell cd $(KERNEL_BINARY_DIR) && $(KERNEL_SRC)/scripts/headers_install.sh $(AUDIO_ROOT)/include/uapi/sound/wcd-dsp-glink.h $(UAPI_OUT)/sound/wcd-dsp-glink.h)
 	$(shell mkdir -p $(KERNEL_BINARY_DIR)/usr/include/audio/sound)
 	$(shell mkdir -p $(KERNEL_BINARY_DIR)/usr/include/audio/linux/mfd)
 	$(shell mkdir -p $(KERNEL_BINARY_DIR)/usr/include/audio/linux/mfd/wcd9xxx)
 	$(shell cp $(UAPI_OUT)/linux/*.h $(KERNEL_BINARY_DIR)/usr/include/audio/linux/)
 	$(shell cp $(UAPI_OUT)/linux/mfd/wcd9xxx/*.h $(KERNEL_BINARY_DIR)/usr/include/audio/linux/mfd/wcd9xxx/)
 	$(shell cp $(UAPI_OUT)/sound/*.h $(KERNEL_BINARY_DIR)/usr/include/audio/sound/)
+endif
 	$(MAKE) -C $(KERNEL_SRC) M=$(shell pwd) modules $(KBUILD_OPTIONS)
 
 modules_install:
 	$(MAKE) INSTALL_MOD_STRIP=1 -C $(KERNEL_SRC) M=$(shell pwd) modules_install
+
+ifeq ($(QTI_TECHPACK), true)
+%:
+	$(MAKE) -C $(KERNEL_SRC) M=$(M) $(KBUILD_OPTIONS)
+endif
 
 clean:
 	rm -f *.o *.ko *.mod.c *.mod.o *~ .*.cmd Module.symvers

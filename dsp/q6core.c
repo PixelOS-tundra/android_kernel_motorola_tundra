@@ -480,7 +480,7 @@ static int32_t aprv2_core_fn_q(struct apr_client_data *data, void *priv)
 		if (data->payload_size != ((sizeof(struct avcs_load_unload_modules_sec_payload)
 			* rsp_payload->num_modules) + sizeof(uint32_t))) {
 			pr_err("%s: payload size greater than expected size %d\n",
-				__func__,data->payload_size);
+				 __func__, data->payload_size);
 			return -EINVAL;
 		}
 		memcpy(rsp_payload, data->payload, data->payload_size);
@@ -2060,7 +2060,7 @@ static int q6core_is_avs_up(int32_t *avs_state)
 	if (!adsp_ready) {
 		pr_err_ratelimited("%s: Timeout. ADSP Audio is not ready\n",
 				   __func__);
-		ret = -ETIMEDOUT;
+		ret = -EPROBE_DEFER;
 	}
 
 	return ret;

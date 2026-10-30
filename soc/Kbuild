@@ -9,25 +9,37 @@ endif
 ifeq ($(KERNEL_BUILD), 1)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
-	AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-5.4
-	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+	ifeq  ($(TARGET_SUPPORT), sa410m)
+		AUDIO_ROOT := $(shell pwd)/../../../../vendor/qcom/opensource/audio-kernel
+	else
+		AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-5.4
+		AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+	endif
+endif
+
+ifeq ($(TARGET_SUPPORT), sa410m)
+	include $(AUDIO_ROOT)/config/sa410mauto.conf
+	export
+	INCS    +=  -include $(AUDIO_ROOT)/config/sa410mautoconf.h
 endif
 
 ifeq ($(CONFIG_SND_SOC_AUTO), y)
 	ifdef CONFIG_SND_SOC_SA8155
 		include $(AUDIO_ROOT)/config/sa8155auto.conf
-		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sa8155autoconf.h
 	endif
 	ifdef CONFIG_SND_SOC_SA6155
 		include $(AUDIO_ROOT)/config/sa6155auto.conf
-		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sa6155autoconf.h
 	endif
 	ifdef CONFIG_SND_SOC_GVM
-		include $(AUDIO_ROOT)/config/gvmauto.conf
-		export
-		INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
+		ifeq ($(QTI_TECHPACK_KERNEL_6_1), true)
+			include $(AUDIO_ROOT)/config/gvmautolv.conf
+			INCS    +=  -include $(AUDIO_ROOT)/config/gvmautolvconf.h
+		else
+			include $(AUDIO_ROOT)/config/gvmauto.conf
+			INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
+		endif
 	endif
 	ifdef CONFIG_SND_SOC_AR
 		include $(AUDIO_ROOT)/config/arauto.conf
@@ -36,7 +48,6 @@ ifeq ($(CONFIG_SND_SOC_AUTO), y)
 	endif
 	ifdef CONFIG_SND_SOC_GVM_SA8295
 		include $(AUDIO_ROOT)/config/sa8295gvmauto.conf
-		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sa8295gvmautoconf.h
 	endif
 else
@@ -44,11 +55,9 @@ else
 		ifeq ($(CONFIG_ARCH_SM8150), y)
 			ifdef CONFIG_SND_SOC_SA8155
 				include $(AUDIO_ROOT)/config/sa8155auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sa8155autoconf.h
 			else
 				include $(AUDIO_ROOT)/config/sm8150auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sm8150autoconf.h
 			endif
 		endif
@@ -74,11 +83,9 @@ else
 		ifeq ($(CONFIG_ARCH_SM6150), y)
 			ifdef CONFIG_SND_SOC_SA6155
 				include $(AUDIO_ROOT)/config/sa6155auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sa6155autoconf.h
 			else
 				include $(AUDIO_ROOT)/config/sm6150auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sm6150autoconf.h
 			endif
 		endif
@@ -90,11 +97,9 @@ else
 		ifeq ($(CONFIG_ARCH_SDMSHRIKE), y)
 			ifdef CONFIG_SND_SOC_SA8155
 				include $(AUDIO_ROOT)/config/sa8155auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sa8155autoconf.h
 			else
 				include $(AUDIO_ROOT)/config/sm8150auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sm8150autoconf.h
 			endif
 		endif
@@ -104,9 +109,13 @@ else
 			INCS    +=  -include $(AUDIO_ROOT)/config/qcs405autoconf.h
 		endif
 		ifeq ($(CONFIG_QTI_QUIN_GVM), y)
-			include $(AUDIO_ROOT)/config/gvmauto.conf
-			export
-			INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
+			ifeq ($(QTI_TECHPACK_KERNEL_6_1), true)
+				include $(AUDIO_ROOT)/config/gvmautolv.conf
+				INCS    +=  -include $(AUDIO_ROOT)/config/gvmautolvconf.h
+			else
+				include $(AUDIO_ROOT)/config/gvmauto.conf
+				INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
+			endif
 		endif
 	endif
 endif
@@ -128,7 +137,7 @@ endif
 # config.
 
 ############ UAPI ############
-UAPI_DIR :=	uapi/audio
+UAPI_DIR :=	uapi
 UAPI_INC :=	-I$(AUDIO_ROOT)/include/$(UAPI_DIR)
 
 ############ COMMON ############
@@ -174,7 +183,9 @@ endif
 LINUX_INC +=	-Iinclude/linux
 
 INCS +=		$(COMMON_INC) \
-		$(UAPI_INC)
+		$(UAPI_INC) \
+		-I$(KERNEL_SRC)/drivers/pinctrl \
+		-I$(KERNEL_SRC)/drivers/base/regmap
 
 EXTRA_CFLAGS += $(INCS)
 

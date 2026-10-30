@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <sound/soc.h>
@@ -351,6 +352,16 @@ SND_SOC_DAILINK_DEFS(multimedia34,
 	DAILINK_COMP_ARRAY(COMP_CPU("MultiMedia34")),
 	DAILINK_COMP_ARRAY(COMP_CODEC("snd-soc-dummy", "snd-soc-dummy-dai")),
 	DAILINK_COMP_ARRAY(COMP_PLATFORM("msm-pcm-dsp.0")));
+
+SND_SOC_DAILINK_DEFS(multimedia35,
+	DAILINK_COMP_ARRAY(COMP_CPU("MultiMedia35")),
+	DAILINK_COMP_ARRAY(COMP_CODEC("snd-soc-dummy", "snd-soc-dummy-dai")),
+	DAILINK_COMP_ARRAY(COMP_PLATFORM("msm-pcm-dsp.1")));
+
+SND_SOC_DAILINK_DEFS(multimedia37,
+	DAILINK_COMP_ARRAY(COMP_CPU("MultiMedia36")),
+	DAILINK_COMP_ARRAY(COMP_CODEC("snd-soc-dummy", "snd-soc-dummy-dai")),
+	DAILINK_COMP_ARRAY(COMP_PLATFORM("msm-pcm-dsp.1")));
 
 SND_SOC_DAILINK_DEFS(int_hfp_bt_hostless,
 	DAILINK_COMP_ARRAY(COMP_CPU("INT_HFP_BT_HOSTLESS")),

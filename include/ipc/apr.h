@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2010-2017, 2019-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __APR_H_
 #define __APR_H_
 
 #include <linux/mutex.h>
-#include <soc/qcom/subsystem_notif.h>
 
 enum apr_subsys_state {
 	APR_SUBSYS_DOWN,

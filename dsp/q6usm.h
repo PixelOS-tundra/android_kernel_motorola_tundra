@@ -55,8 +55,8 @@ struct us_port_data {
 	/* read or write locks */
 	struct mutex	lock;
 	spinlock_t	dsp_lock;
-	/* ION dma_buf memory */
-	struct      dma_buf *dma_buf;
+	/* ION memory handle*/
+	void	*mem_handle;
 	/* extended parameters, related to q6 variants */
 	void		*ext;
 	/* physical address of parameter buffer */
@@ -66,9 +66,9 @@ struct us_port_data {
 	/* size of parameter buffer */
 	uint32_t	param_buf_size;
 	/* parameter buffer memory handle */
-	void		*param_buf_mem_handle;
-	/* ION dma_buf memory for parameter buffer */
-	struct      dma_buf *param_dma_buf;
+	void	*param_buf_mem_handle;
+	/* ION mem handle for parameter buffer */
+	void	*param_mem_handle;
 };
 
 struct us_client {

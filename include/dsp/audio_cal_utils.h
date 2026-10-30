@@ -1,12 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2014, 2018, 2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef _AUDIO_CAL_UTILS_H
 #define _AUDIO_CAL_UTILS_H
 
 #include <linux/msm_ion.h>
-#include <audio/linux/msm_audio_calibration.h>
+#include <linux/msm_audio_calibration.h>
 #include <dsp/msm_audio_ion.h>
 #include <dsp/audio_calibration.h>
 
@@ -20,7 +21,7 @@ struct mem_map_data {
 	size_t			map_size;
 	int32_t			q6map_handle;
 	int32_t			ion_map_handle;
-	struct dma_buf		*dma_buf;
+	void			*mem_handle;
 };
 
 struct cal_block_data {

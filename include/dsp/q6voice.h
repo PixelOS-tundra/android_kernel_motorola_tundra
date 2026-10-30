@@ -7,7 +7,7 @@
 #define __QDSP6VOICE_H__
 
 #include <linux/msm_ion.h>
-#include <audio/sound/voice_params.h>
+#include <sound/voice_params.h>
 #include <dsp/rtac.h>
 #include <dsp/q6core.h>
 #include <ipc/apr.h>
@@ -153,7 +153,7 @@ struct mem_buffer {
 };
 
 struct share_mem_buf {
-	struct dma_buf		*dma_buf;
+	void			*mem_handle;
 	struct mem_buffer	buf[NUM_OF_BUFFERS];
 };
 
@@ -161,7 +161,7 @@ struct mem_map_table {
 	dma_addr_t		phys;
 	void			*data;
 	size_t			size; /* size of buffer */
-	struct dma_buf		*dma_buf;
+	void			*mem_handle;
 };
 
 /* Common */

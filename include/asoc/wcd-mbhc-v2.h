@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __WCD_MBHC_V2_H__
 #define __WCD_MBHC_V2_H__
@@ -61,7 +62,7 @@ do {                                                    \
 #define WCD_MBHC_REG_READ(function, val)	        \
 do {                                                    \
 	if (mbhc->wcd_mbhc_regs[function].reg) {        \
-		val = (((snd_soc_component_read32(mbhc->component,	\
+		val = (((snd_soc_component_read(mbhc->component,	\
 		mbhc->wcd_mbhc_regs[function].reg)) &	\
 		(mbhc->wcd_mbhc_regs[function].mask)) >> \
 		(mbhc->wcd_mbhc_regs[function].offset)); \

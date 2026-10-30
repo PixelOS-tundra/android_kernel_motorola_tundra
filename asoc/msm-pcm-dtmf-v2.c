@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2013-2014, 2017-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -88,51 +89,6 @@ static struct snd_pcm_hardware msm_pcm_hardware = {
 	.fifo_size =            0,
 };
 
-static int msm_dtmf_rx_generate_put(struct snd_kcontrol *kcontrol,
-				    struct snd_ctl_elem_value *ucontrol)
-{
-	uint16_t low_freq = ucontrol->value.integer.value[0];
-	uint16_t high_freq = ucontrol->value.integer.value[1];
-	int64_t duration = ucontrol->value.integer.value[2];
-	uint16_t gain = ucontrol->value.integer.value[3];
-
-	pr_debug("%s: low_freq=%d high_freq=%d duration=%lld gain=%d\n",
-		 __func__, low_freq, high_freq, (int)duration, gain);
-
-	if (duration == DTMF_MAX_DURATION)
-		duration = -1;
-
-	afe_dtmf_generate_rx(duration, high_freq, low_freq, gain);
-	return 0;
-}
-
-static int msm_dtmf_rx_generate_get(struct  snd_kcontrol *kcontrol,
-				    struct snd_ctl_elem_value *ucontrol)
-{
-	pr_debug("%s:\n", __func__);
-	ucontrol->value.integer.value[0] = 0;
-	return 0;
-}
-
-static int msm_dtmf_detect_voice_rx_put(struct snd_kcontrol *kcontrol,
-					struct snd_ctl_elem_value *ucontrol)
-{
-	int enable = ucontrol->value.integer.value[0];
-
-	pr_debug("%s: enable=%d\n", __func__, enable);
-	voc_enable_dtmf_rx_detection(voc_get_session_id(VOICE_SESSION_NAME),
-				     enable);
-
-	return 0;
-}
-
-static int msm_dtmf_detect_voice_rx_get(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
-{
-	ucontrol->value.integer.value[0] = 0;
-	return 0;
-}
-
 static int msm_dtmf_detect_volte_rx_put(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
@@ -153,13 +109,6 @@ static int msm_dtmf_detect_volte_rx_get(struct snd_kcontrol *kcontrol,
 }
 
 static struct snd_kcontrol_new msm_dtmf_controls[] = {
-	SOC_SINGLE_MULTI_EXT("DTMF_Generate Rx Low High Duration Gain",
-			     SND_SOC_NOPM, 0, 5000, 0, 4,
-			     msm_dtmf_rx_generate_get,
-			     msm_dtmf_rx_generate_put),
-	SOC_SINGLE_EXT("DTMF_Detect Rx Voice enable", SND_SOC_NOPM, 0, 1, 0,
-				msm_dtmf_detect_voice_rx_get,
-				msm_dtmf_detect_voice_rx_put),
 	SOC_SINGLE_EXT("DTMF_Detect Rx VoLTE enable", SND_SOC_NOPM, 0, 1, 0,
 				msm_dtmf_detect_volte_rx_get,
 				msm_dtmf_detect_volte_rx_put),
@@ -265,8 +214,9 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 	return ret;
 }
 
-static int msm_pcm_copy(struct snd_pcm_substream *substream, int a,
-	 unsigned long hwoff, void __user *buf, unsigned long fbytes)
+static int msm_pcm_copy(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream, int a,
+	 			unsigned long hwoff, void __user *buf, unsigned long fbytes)
 {
 	int ret = 0;
 
@@ -278,11 +228,14 @@ static int msm_pcm_copy(struct snd_pcm_substream *substream, int a,
 	return ret;
 }
 
-static int msm_pcm_open(struct snd_pcm_substream *substream)
+static int msm_pcm_open(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct dtmf_drv_info *prtd = NULL;
 	int ret = 0;
+
+	runtime->hw = msm_pcm_hardware;
 
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 		prtd = kzalloc(sizeof(struct dtmf_drv_info), GFP_KERNEL);
@@ -298,8 +251,6 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 		INIT_LIST_HEAD(&prtd->out_queue);
 		INIT_LIST_HEAD(&prtd->free_out_queue);
 
-		runtime->hw = msm_pcm_hardware;
-
 		ret = snd_pcm_hw_constraint_integer(runtime,
 						    SNDRV_PCM_HW_PARAM_PERIODS);
 		if (ret < 0)
@@ -314,7 +265,8 @@ done:
 	return ret;
 }
 
-static int msm_pcm_close(struct snd_pcm_substream *substream)
+static int msm_pcm_close(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 	struct list_head *ptr = NULL;
@@ -390,7 +342,8 @@ static int msm_pcm_close(struct snd_pcm_substream *substream)
 	return ret;
 }
 
-static int msm_pcm_hw_params(struct snd_pcm_substream *substream,
+static int msm_pcm_hw_params(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream,
 			     struct snd_pcm_hw_params *params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -447,7 +400,8 @@ static int msm_pcm_capture_prepare(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int msm_pcm_prepare(struct snd_pcm_substream *substream)
+static int msm_pcm_prepare(struct snd_soc_component *component,
+			    struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct dtmf_drv_info *prtd = runtime->private_data;
@@ -478,7 +432,8 @@ static int msm_pcm_prepare(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+static int msm_pcm_trigger(struct snd_soc_component *component,
+			    struct snd_pcm_substream *substream, int cmd)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -504,7 +459,8 @@ static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	return ret;
 }
 
-static snd_pcm_uframes_t msm_pcm_pointer(struct snd_pcm_substream *substream)
+static snd_pcm_uframes_t msm_pcm_pointer(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream)
 {
 	snd_pcm_uframes_t ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -519,17 +475,9 @@ static snd_pcm_uframes_t msm_pcm_pointer(struct snd_pcm_substream *substream)
 	return ret;
 }
 
-static const struct snd_pcm_ops msm_pcm_ops = {
-	.open           = msm_pcm_open,
-	.copy_user	= msm_pcm_copy,
-	.hw_params	= msm_pcm_hw_params,
-	.close          = msm_pcm_close,
-	.prepare        = msm_pcm_prepare,
-	.trigger        = msm_pcm_trigger,
-	.pointer        = msm_pcm_pointer,
-};
 
-static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
+static int msm_asoc_pcm_new(struct snd_soc_component *component,
+				struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_card *card = rtd->card->snd_card;
 	int ret = 0;
@@ -541,8 +489,14 @@ static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 
 static struct snd_soc_component_driver msm_soc_component = {
 	.name		= DRV_NAME,
-	.ops		= &msm_pcm_ops,
-	.pcm_new	= msm_asoc_pcm_new,
+	.pcm_construct	= msm_asoc_pcm_new,
+	.open           = msm_pcm_open,
+	.copy_user	= msm_pcm_copy,
+	.hw_params	= msm_pcm_hw_params,
+	.close          = msm_pcm_close,
+	.prepare        = msm_pcm_prepare,
+	.trigger        = msm_pcm_trigger,
+	.pointer        = msm_pcm_pointer,
 	.probe		= msm_pcm_dtmf_probe,
 };
 

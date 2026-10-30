@@ -1199,9 +1199,9 @@ static int bolero_soc_codec_probe(struct snd_soc_component *component)
 	}
 
 	/* Assign bolero version */
-	core_id_0 = snd_soc_component_read32(component,
+	core_id_0 = snd_soc_component_read(component,
 					BOLERO_CDC_VA_TOP_CSR_CORE_ID_0);
-	core_id_1 = snd_soc_component_read32(component,
+	core_id_1 = snd_soc_component_read(component,
 					BOLERO_CDC_VA_TOP_CSR_CORE_ID_1);
 	if ((core_id_0 == 0x01) && (core_id_1 == 0x0F))
 		priv->version = BOLERO_VERSION_2_0;
@@ -1423,7 +1423,7 @@ static int bolero_probe(struct platform_device *pdev)
 		dev_dbg(&pdev->dev, "%s: clk get %s failed %d\n",
 			__func__, "lpass_audio_hw_vote", ret);
 		lpass_audio_hw_vote = NULL;
-		ret = 0;
+		return -EPROBE_DEFER;
 	}
 	priv->lpass_audio_hw_vote = lpass_audio_hw_vote;
 
@@ -1468,8 +1468,6 @@ int bolero_runtime_resume(struct device *dev)
 		}
 	}
 	priv->core_hw_vote_count++;
-	trace_printk("%s: hw vote count %d\n",
-		__func__, priv->core_hw_vote_count);
 
 audio_vote:
 	if (priv->lpass_audio_hw_vote == NULL) {
@@ -1487,8 +1485,6 @@ audio_vote:
 		}
 	}
 	priv->core_audio_vote_count++;
-	trace_printk("%s: audio vote count %d\n",
-		__func__, priv->core_audio_vote_count);
 
 done:
 	mutex_unlock(&priv->vote_lock);
@@ -1512,7 +1508,7 @@ int bolero_runtime_suspend(struct device *dev)
 		dev_dbg(dev, "%s: Invalid lpass core hw node\n",
 			__func__);
 	}
-	trace_printk("%s: hw vote count %d\n",
+	pr_debug("%s: hw vote count %d\n",
 		__func__, priv->core_hw_vote_count);
 
 	if (priv->lpass_audio_hw_vote != NULL) {
@@ -1525,8 +1521,6 @@ int bolero_runtime_suspend(struct device *dev)
 		dev_dbg(dev, "%s: Invalid lpass audio hw node\n",
 			__func__);
 	}
-	trace_printk("%s: audio vote count %d\n",
-		__func__, priv->core_audio_vote_count);
 
 	mutex_unlock(&priv->vote_lock);
 	return 0;

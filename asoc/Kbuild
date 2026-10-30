@@ -9,27 +9,39 @@ endif
 ifeq ($(KERNEL_BUILD), 1)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
-	AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-5.4
-	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+	ifeq  ($(TARGET_SUPPORT), sa410m)
+		AUDIO_ROOT := $(shell pwd)/../../../../vendor/qcom/opensource/audio-kernel
+	else
+		AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-5.4
+		AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
+	endif
+endif
+
+ifeq ($(TARGET_SUPPORT), sa410m)
+	include $(AUDIO_ROOT)/config/sa410mauto.conf
+	export
+	INCS    +=  -include $(AUDIO_ROOT)/config/sa410mautoconf.h
 endif
 
 ifeq ($(CONFIG_SND_SOC_AUTO), y)
 	ifdef CONFIG_SND_SOC_SA8155
 		CDEFINES += -DCONFIG_SEN_TDM_DISABLE
 		include $(AUDIO_ROOT)/config/sa8155auto.conf
-		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sa8155autoconf.h
 	endif
 	ifdef CONFIG_SND_SOC_SA6155
 		CDEFINES += -DCONFIG_SEN_TDM_DISABLE
 		include $(AUDIO_ROOT)/config/sa6155auto.conf
-		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sa6155autoconf.h
 	endif
 	ifdef CONFIG_SND_SOC_GVM
-		include $(AUDIO_ROOT)/config/gvmauto.conf
-		export
-		INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
+		ifeq ($(QTI_TECHPACK_KERNEL_6_1), true)
+			include $(AUDIO_ROOT)/config/gvmautolv.conf
+			INCS    +=  -include $(AUDIO_ROOT)/config/gvmautolvconf.h
+		else
+			include $(AUDIO_ROOT)/config/gvmauto.conf
+			INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
+		endif
 	endif
 	ifdef CONFIG_SND_SOC_AR
 		include $(AUDIO_ROOT)/config/arauto.conf
@@ -38,7 +50,6 @@ ifeq ($(CONFIG_SND_SOC_AUTO), y)
 	endif
 	ifdef CONFIG_SND_SOC_GVM_SA8295
 		include $(AUDIO_ROOT)/config/sa8295gvmauto.conf
-		export
 		INCS    +=  -include $(AUDIO_ROOT)/config/sa8295gvmautoconf.h
 	endif
 else
@@ -46,22 +57,18 @@ else
 		ifeq ($(CONFIG_ARCH_SM8150), y)
 			ifdef CONFIG_SND_SOC_SA8155
 				include $(AUDIO_ROOT)/config/sa8155auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sa8155autoconf.h
 			else
 				include $(AUDIO_ROOT)/config/sm8150auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sm8150autoconf.h
 			endif
 		endif
 		ifeq ($(CONFIG_ARCH_SM6150), y)
 			ifdef CONFIG_SND_SOC_SA6155
 				include $(AUDIO_ROOT)/config/sa6155auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sa6155autoconf.h
 			else
 				include $(AUDIO_ROOT)/config/sm6150auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sm6150autoconf.h
 			endif
 		endif
@@ -92,11 +99,9 @@ else
 		ifeq ($(CONFIG_ARCH_SDMSHRIKE), y)
 			ifdef CONFIG_SND_SOC_SA8155
 				include $(AUDIO_ROOT)/config/sa8155auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sa8155autoconf.h
 			else
 				include $(AUDIO_ROOT)/config/sm8150auto.conf
-				export
 				INCS    +=  -include $(AUDIO_ROOT)/config/sm8150autoconf.h
 			endif
 		endif
@@ -106,9 +111,13 @@ else
 			INCS    +=  -include $(AUDIO_ROOT)/config/qcs405autoconf.h
 		endif
 		ifeq ($(CONFIG_QTI_QUIN_GVM), y)
-			include $(AUDIO_ROOT)/config/gvmauto.conf
-			export
-			INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
+			ifeq ($(QTI_TECHPACK_KERNEL_6_1), true)
+				include $(AUDIO_ROOT)/config/gvmautolv.conf
+				INCS    +=  -include $(AUDIO_ROOT)/config/gvmautolvconf.h
+			else
+				include $(AUDIO_ROOT)/config/gvmauto.conf
+				INCS    +=  -include $(AUDIO_ROOT)/config/gvmautoconf.h
+			endif
 		endif
 	endif
 endif
@@ -130,7 +139,7 @@ endif
 # config.
 
 ############ UAPI ############
-UAPI_DIR :=	uapi/audio
+UAPI_DIR :=	uapi
 UAPI_INC :=	-I$(AUDIO_ROOT)/include/$(UAPI_DIR)
 
 ############ COMMON ############
@@ -190,12 +199,20 @@ ifdef CONFIG_SND_SOC_BENGAL
 	MACHINE_OBJS += bengal.o
 endif
 
+ifdef CONFIG_SND_SOC_SA410M
+    MACHINE_OBJS += sa410m.o
+endif
+
 # for sa8155 sound card driver
 ifdef CONFIG_SND_SOC_SA8155
 	MACHINE_OBJS += sa8155.o
 endif
 
-# for gvm sound card driver
+ifdef CONFIG_SND_SOC_GVM
+	MACHINE_OBJS += sa8155.o
+endif
+
+# for gvmgh sound card driver
 ifdef CONFIG_SND_SOC_GVM_AUTO_SPF
     SPF_MACHINE_OBJS += gvm_auto_spf_dummy.o
 endif
@@ -220,26 +237,25 @@ ifdef CONFIG_SND_SOC_QDSP6V2
 	PLATFORM_OBJS += msm-pcm-afe-v2.o
 	PLATFORM_OBJS += msm-pcm-dtmf-v2.o
 	PLATFORM_OBJS += msm-pcm-hostless.o
-	PLATFORM_OBJS += msm-pcm-host-voice-v2.o
+#	PLATFORM_OBJS += msm-pcm-host-voice-v2.o
 	PLATFORM_OBJS += msm-pcm-loopback-v2.o
+ifndef CONFIG_SND_SOC_SA410M
 	PLATFORM_OBJS += msm-pcm-q6-noirq.o
+endif
 	PLATFORM_OBJS += msm-pcm-q6-v2.o
-	ifeq (y,$(findstring y,$(CONFIG_QTI_QUIN_GVM) $(CONFIG_PLATFORM_AUTO)))
+	PLATFORM_OBJS += msm-transcode-loopback-q6-v2.o
+	ifdef CONFIG_BOARD_AUTO_AUDIO
 		PLATFORM_OBJS += msm-pcm-routing-auto.o
 	else
 		PLATFORM_OBJS += msm-pcm-routing-v2.o
 		PLATFORM_OBJS += msm-pcm-voice-v2.o
 		PLATFORM_OBJS += msm-pcm-voip-v2.o
 	endif
-	PLATFORM_OBJS += msm-transcode-loopback-q6-v2.o
-	ifeq (y,$(findstring y,$(CONFIG_QTI_QUIN_GVM) $(CONFIG_PLATFORM_AUTO)))
+	ifdef CONFIG_BOARD_AUTO_AUDIO
 		PLATFORM_OBJS += platform_init_auto.o
 	else
 		PLATFORM_OBJS += platform_init.o
 	endif
-endif
-ifdef CONFIG_WCD9XXX_CODEC_CORE
-	PLATFORM_OBJS += msm-dai-slim.o
 endif
 ifdef CONFIG_DOLBY_DS2
 	PLATFORM_OBJS += msm-ds2-dap-config.o
@@ -299,9 +315,9 @@ KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codec
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/wcd934x/Module.symvers
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/wcd937x/Module.symvers
 endif
-ifeq ($(KERNEL_BUILD), 1)
-	obj-y += codecs/
-endif
+
+obj-y += codecs/
+
 # Module information used by KBuild framework
 obj-$(CONFIG_SND_SOC_QDSP6V2) += platform_dlkm.o
 platform_dlkm-y := $(PLATFORM_OBJS)
@@ -336,10 +352,16 @@ machine_dlkm-y := $(MACHINE_OBJS)
 obj-$(CONFIG_SND_SOC_BENGAL) += machine_dlkm.o
 machine_dlkm-y := $(MACHINE_OBJS)
 
+obj-$(CONFIG_SND_SOC_SA410M) += machine_dlkm.o
+machine_dlkm-y := $(MACHINE_OBJS)
+
 obj-$(CONFIG_SND_SOC_SA8155) += machine_dlkm.o
 machine_dlkm-y := $(MACHINE_OBJS)
 
 obj-$(CONFIG_SND_SOC_SA8295) += machine_dlkm.o
+machine_dlkm-y := $(MACHINE_OBJS)
+
+obj-$(CONFIG_SND_SOC_GVM) += machine_dlkm.o
 machine_dlkm-y := $(MACHINE_OBJS)
 
 obj-$(CONFIG_SND_SOC_CPE) += cpe_lsm_dlkm.o

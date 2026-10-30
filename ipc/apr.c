@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2010-2014, 2016-2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/kernel.h>
@@ -23,18 +24,22 @@
 #include <linux/ipc_logging.h>
 #include <linux/of_platform.h>
 #include <linux/ratelimit.h>
-#include <soc/qcom/boot_stats.h>
-#include <soc/qcom/subsystem_restart.h>
 #include <linux/qcom_scm.h>
+#include <linux/bootmarker_kernel.h>
 #include <soc/snd_event.h>
 #include <dsp/apr_audio-v2.h>
 #include <dsp/audio_notifier.h>
 #include <ipc/apr.h>
 #include <ipc/apr_tal.h>
+#include <linux/remoteproc.h>
+#include <linux/remoteproc/qcom_rproc.h>
+#include <trace/events/rproc_qcom.h>
+
 
 #define APR_PKT_IPC_LOG_PAGE_CNT 2
 
 static int apr_pkt_cnt_adsp_restart = 20;
+static int apr_reg_initial_bootup = true;
 module_param(apr_pkt_cnt_adsp_restart, int, 0664);
 MODULE_PARM_DESC(apr_pkt_cnt_adsp_restart, "set apr pktcount for adsp restart feature");
 
@@ -54,6 +59,7 @@ struct apr_reset_work {
 	struct work_struct work;
 };
 
+struct rproc *rproc_h;
 struct apr_chld_device {
 	struct platform_device *pdev;
 	struct list_head node;
@@ -314,39 +320,22 @@ static void apr_add_child_devices(struct work_struct *work)
 
 static void apr_adsp_up(void)
 {
-	pr_info("%s: Q6 is Up\n", __func__);
-	place_marker("M - ADSP Ready");
-	apr_set_q6_state(APR_SUBSYS_LOADED);
+	if (apr_get_q6_state() != APR_SUBSYS_LOADED) {
+		pr_info("%s: Q6 is Up\n", __func__);
+		#if (IS_ENABLED(CONFIG_BOOTMARKER_PROXY))
+			bootmarker_place_marker("M - ADSP Ready");
+		#else
+			dev_err(&pdev->dev, "M - ADSP Ready\n");
+		#endif
+		apr_set_q6_state(APR_SUBSYS_LOADED);
 
-	spin_lock(&apr_priv->apr_lock);
-	if (apr_priv->is_initial_boot)
-		schedule_work(&apr_priv->add_chld_dev_work);
-	spin_unlock(&apr_priv->apr_lock);
-	snd_event_notify(apr_priv->dev, SND_EVENT_UP);
-	cancel_work_sync(&apr_cb_work);
-}
-
-int apr_load_adsp_image(void)
-{
-	int rc = 0;
-
-	mutex_lock(&q6.lock);
-	if (apr_get_q6_state() == APR_SUBSYS_UP) {
-		q6.pil = subsystem_get("adsp");
-		if (IS_ERR(q6.pil)) {
-			rc = PTR_ERR(q6.pil);
-			pr_err("APR: Unable to load q6 image, error:%d\n", rc);
-		} else {
-			apr_set_q6_state(APR_SUBSYS_LOADED);
-			pr_debug("APR: Image is loaded, stated\n");
-		}
-	} else if (apr_get_q6_state() == APR_SUBSYS_LOADED) {
-		pr_debug("APR: q6 image already loaded\n");
-	} else {
-		pr_debug("APR: cannot load state %d\n", apr_get_q6_state());
+		spin_lock(&apr_priv->apr_lock);
+		if (apr_priv->is_initial_boot)
+			schedule_work(&apr_priv->add_chld_dev_work);
+		spin_unlock(&apr_priv->apr_lock);
+		snd_event_notify(apr_priv->dev, SND_EVENT_UP);
+		cancel_work_sync(&apr_cb_work);
 	}
-	mutex_unlock(&q6.lock);
-	return rc;
 }
 
 struct apr_client *apr_get_client(int dest_id, int client_id)
@@ -533,8 +522,25 @@ struct apr_svc *apr_register(char *dest, char *svc_name, apr_fn svc_fn,
 
 	if (dest_id == APR_DEST_QDSP6) {
 		if (apr_get_q6_state() != APR_SUBSYS_LOADED) {
-			pr_err_ratelimited("%s: adsp not up\n", __func__);
-			return NULL;
+			int rt;
+
+			if (!apr_reg_initial_bootup) {
+				pr_err_ratelimited("%s: ADSP is not UP", __func__);
+				return NULL;
+			}
+			rt = rproc_boot(rproc_h);
+			if (rt != 0) {
+				pr_err("%s: adsp not up rproc is NULL\n", __func__);
+				return NULL;
+			} else {
+				apr_adsp_up();
+				pr_info("%s:adsp Up,updated adsp status using rproc boot status\n"
+					, __func__);
+				spin_lock(&apr_priv->apr_lock);
+				apr_priv->is_initial_boot = false;
+				spin_unlock(&apr_priv->apr_lock);
+				apr_reg_initial_bootup = false;
+			}
 		}
 		pr_debug("%s: adsp Up\n", __func__);
 	} else if (dest_id == APR_DEST_MODEM) {
@@ -1128,6 +1134,7 @@ static int apr_notifier_service_cb(struct notifier_block *this,
 		spin_lock(&apr_priv->apr_lock);
 		apr_priv->is_initial_boot = false;
 		spin_unlock(&apr_priv->apr_lock);
+		apr_reg_initial_bootup = false;
 		break;
 	default:
 		break;
@@ -1187,6 +1194,9 @@ static void apr_cleanup(void)
 static int apr_probe(struct platform_device *pdev)
 {
 	int i, j, k, ret = 0;
+	struct property *prop = NULL;
+	phandle rproc_phandle = 0;
+	int size = 0;
 
 	init_waitqueue_head(&modem_wait);
 
@@ -1197,6 +1207,25 @@ static int apr_probe(struct platform_device *pdev)
 	apr_priv->dev = &pdev->dev;
 	spin_lock_init(&apr_priv->apr_lock);
 	INIT_WORK(&apr_priv->add_chld_dev_work, apr_add_child_devices);
+
+	spin_lock(&apr_priv->apr_lock);
+	apr_priv->is_initial_boot = true;
+	spin_unlock(&apr_priv->apr_lock);
+
+	prop = of_find_property(pdev->dev.of_node, "qcom,rproc-handle", &size);
+	if (!prop) {
+		dev_err(&pdev->dev, "Missing remotproc handle\n");
+		ret = -EINVAL;
+		return ret;
+	}
+	rproc_phandle = be32_to_cpup(prop->value);
+
+	rproc_h = rproc_get_by_phandle(rproc_phandle);
+	if (!rproc_h) {
+		dev_info_ratelimited(&pdev->dev, "remotproc handle NULL\n");
+		ret = -EPROBE_DEFER;
+		return ret;
+	}
 
 	for (i = 0; i < APR_DEST_MAX; i++)
 		for (j = 0; j < APR_CLIENT_MAX; j++) {
@@ -1221,9 +1250,6 @@ static int apr_probe(struct platform_device *pdev)
 		pr_err("%s: Unable to create ipc log context\n", __func__);
 #endif  /* CONFIG_IPC_LOGGING */
 
-	spin_lock(&apr_priv->apr_lock);
-	apr_priv->is_initial_boot = true;
-	spin_unlock(&apr_priv->apr_lock);
 	ret = of_property_read_string(pdev->dev.of_node,
 				      "qcom,subsys-name",
 				      (const char **)(&subsys_name));

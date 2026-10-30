@@ -11,7 +11,7 @@
 #include <linux/sched.h>
 #include <linux/uaccess.h>
 #include <linux/wait.h>
-#include <audio/linux/msm_audio.h>
+#include <linux/msm_audio.h>
 #include <linux/debugfs.h>
 #include <linux/list.h>
 #include <linux/slab.h>
@@ -110,7 +110,7 @@ struct ws_mgr {
 
 struct audio_aio_ion_region {
 	struct list_head list;
-	struct dma_buf *dma_buf;
+	void *mem_handle;
 	int fd;
 	void *vaddr;
 	phys_addr_t paddr;

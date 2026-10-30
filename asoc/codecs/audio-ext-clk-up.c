@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/kernel.h>
@@ -11,10 +11,12 @@
 #include <linux/of.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
+#ifndef CONFIG_ARCH_MDM9607
 #include "../../../drivers/clk/qcom/common.h"
+#endif
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
-#include <dt-bindings/clock/qcom,audio-ext-clk.h>
+#include <bindings/qcom,audio-ext-clk.h>
 #include <linux/ratelimit.h>
 #include <dsp/q6afe-v2.h>
 #include "audio-ext-clk-up.h"

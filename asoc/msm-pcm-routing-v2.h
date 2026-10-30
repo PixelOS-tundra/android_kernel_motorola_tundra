@@ -16,6 +16,12 @@
  * made to the string names or the max name length corresponding
  * changes need to be made in the HAL to ensure they still match.
  */
+
+/* Max wait time for pcm availability in sec */
+#define MSM_PCM_CAPTURE_MAX_WAIT        4
+#define MSM_PCM_PLAYBACK_MAX_WAIT       4
+
+
 #define LPASS_BE_NAME_MAX_LENGTH 24
 #define LPASS_BE_PRI_I2S_RX "PRIMARY_I2S_RX"
 #define LPASS_BE_PRI_I2S_TX "PRIMARY_I2S_TX"
@@ -347,6 +353,8 @@ enum {
 	MSM_FRONTEND_DAI_MULTIMEDIA32,
 	MSM_FRONTEND_DAI_MULTIMEDIA33,
 	MSM_FRONTEND_DAI_MULTIMEDIA34,
+	MSM_FRONTEND_DAI_MULTIMEDIA35,
+	MSM_FRONTEND_DAI_MULTIMEDIA36,
 	MSM_FRONTEND_DAI_VOIP,
 	MSM_FRONTEND_DAI_AFE_RX,
 	MSM_FRONTEND_DAI_AFE_TX,
@@ -365,6 +373,8 @@ enum {
 	MSM_FRONTEND_DAI_VOICE2_STUB,
 	MSM_FRONTEND_DAI_VOICEMMODE1,
 	MSM_FRONTEND_DAI_VOICEMMODE2,
+	MSM_FRONTEND_DAI_CS_VOICE,
+	MSM_FRONTEND_DAI_VOLTE,
 	MSM_FRONTEND_DAI_MAX,
 };
 
@@ -818,16 +828,16 @@ int msm_pcm_routing_set_channel_mixer_cfg(
 	int fe_id, int session_type,
 	struct msm_pcm_channel_mixer *params);
 
-#ifdef CONFIG_PLATFORM_AUTO
+#ifdef CONFIG_AUTO_AUDIO
 int msm_pcm_routing_set_channel_mixer_runtime(
 	int fe_id, int be_id, int session_id,
 	int session_type,
 	struct msm_pcm_channel_mixer *params);
 #else
 int msm_pcm_routing_set_channel_mixer_runtime(
-         int be_id, int session_id,
-         int session_type,
-         struct msm_pcm_channel_mixer *params);
+	int fe_id, int be_id, int session_id,
+	int session_type,
+	struct msm_pcm_channel_mixer *params);
 #endif
 
 int msm_pcm_routing_set_stream_ec_ref_chmix_cfg(
@@ -879,6 +889,18 @@ int snd_pcm_add_volume_ctls(struct snd_pcm *pcm, int stream,
 
 #endif
 
+struct snd_pcm_va_info
+{
+	struct snd_pcm *pcm;
+	struct snd_kcontrol *kctl;
+	int stream;
+};
+
+int snd_pcm_add_va_ctls(struct snd_pcm *pcm, int stream,
+			   unsigned long private_value,
+			   struct snd_pcm_va_info **info_ret,
+			   struct snd_kcontrol_new *knew);
+
 #ifndef SND_PCM_ADD_USR_CTL
 /*
  * PCM User control API	1450
@@ -899,9 +921,12 @@ struct snd_pcm_usr {
 };
 
 int snd_pcm_add_usr_ctls(struct snd_pcm *pcm, int stream,
-    const struct snd_pcm_usr_elem *usr,
-    int max_length, int max_control_str_len,
-    unsigned long private_value,
-    struct snd_pcm_usr **info_ret);
+	const struct snd_pcm_usr_elem *usr,
+	int max_length, char *kctl_name,
+	unsigned long private_value,
+	struct snd_pcm_usr **info_ret);
 #endif
+
+bool msm_pcm_routing_get_portid_copp_idx(int fe_id,
+	int session_type, int *port_id, int *copp_idx);
 #endif /*_MSM_PCM_H*/

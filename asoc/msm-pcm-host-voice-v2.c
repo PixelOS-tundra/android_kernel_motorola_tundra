@@ -114,7 +114,7 @@ struct session {
 	struct tap_point rx_tap_point;
 	phys_addr_t sess_paddr;
 	void *sess_kvaddr;
-	struct dma_buf *dma_buf;
+	void *mem_handle;
 	struct mem_map_table tp_mem_table;
 };
 
@@ -446,10 +446,10 @@ static void hpcm_free_allocated_mem(struct hpcm_drv *prtd)
 	paddr = sess->sess_paddr;
 
 	if (paddr) {
-		msm_audio_ion_free(sess->dma_buf);
-		sess->dma_buf = NULL;
-		msm_audio_ion_free(sess->tp_mem_table.dma_buf);
-		sess->tp_mem_table.dma_buf = NULL;
+		msm_audio_ion_free(sess->mem_handle);
+		sess->mem_handle = NULL;
+		msm_audio_ion_free(sess->tp_mem_table.mem_handle);
+		sess->tp_mem_table.mem_handle = NULL;
 		sess->sess_paddr = 0;
 		sess->sess_kvaddr = 0;
 
@@ -518,7 +518,7 @@ static int hpcm_allocate_shared_memory(struct hpcm_drv *prtd)
 	txtp = &sess->tx_tap_point;
 	rxtp = &sess->rx_tap_point;
 
-	result = msm_audio_ion_alloc(&sess->dma_buf,
+	result = msm_audio_ion_alloc(&sess->mem_handle,
 				     VHPCM_BLOCK_SIZE,
 				     &sess->sess_paddr,
 				     &mem_len,
@@ -534,7 +534,7 @@ static int hpcm_allocate_shared_memory(struct hpcm_drv *prtd)
 	pr_debug("%s: Host PCM memory block allocated\n", __func__);
 
 	/* Allocate mem_map_table for tap point */
-	result = msm_audio_ion_alloc(&sess->tp_mem_table.dma_buf,
+	result = msm_audio_ion_alloc(&sess->tp_mem_table.mem_handle,
 			sizeof(struct vss_imemory_table_t),
 			&sess->tp_mem_table.phys,
 			&len,
@@ -543,8 +543,8 @@ static int hpcm_allocate_shared_memory(struct hpcm_drv *prtd)
 	if (result) {
 		pr_err("%s: msm_audio_ion_alloc error, rc = %d\n",
 			__func__, result);
-		msm_audio_ion_free(sess->dma_buf);
-		sess->dma_buf = NULL;
+		msm_audio_ion_free(sess->mem_handle);
+		sess->mem_handle = NULL;
 		sess->sess_paddr = 0;
 		sess->sess_kvaddr = 0;
 		ret = -ENOMEM;
@@ -665,7 +665,7 @@ static void hpcm_copy_playback_data_from_queue(struct dai_data *dai_data,
 		*len = buf_node->frame.len;
 
 		if (*len > HPCM_MAX_VOC_PKT_SIZE) {
-			pr_err("%s: Playback data len %d overflow\n",
+			pr_err("%s:Playback data len %d overflow\n",
 				__func__, *len);
 			return;
 		}
@@ -1005,7 +1005,7 @@ static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 	.mask = 0,
 };
 
-static int msm_pcm_close(struct snd_pcm_substream *substream)
+static int msm_pcm_close(struct snd_soc_component *component, struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 	struct list_head *ptr = NULL;
@@ -1206,7 +1206,8 @@ done:
 	return ret;
 }
 
-static int msm_pcm_copy(struct snd_pcm_substream *substream, int channel,
+static int msm_pcm_copy(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream, int channel,
 			unsigned long hwoff, void __user *buf,
 			unsigned long fbytes)
 {
@@ -1222,7 +1223,8 @@ static int msm_pcm_copy(struct snd_pcm_substream *substream, int channel,
 	return ret;
 }
 
-static snd_pcm_uframes_t msm_pcm_pointer(struct snd_pcm_substream *substream)
+static snd_pcm_uframes_t msm_pcm_pointer(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream)
 {
 	struct dai_data *dai_data = NULL;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -1247,7 +1249,8 @@ done:
 	return ret;
 }
 
-static int msm_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
+static int msm_pcm_trigger(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream, int cmd)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -1284,7 +1287,8 @@ done:
 	return ret;
 }
 
-static int msm_pcm_prepare(struct snd_pcm_substream *substream)
+static int msm_pcm_prepare(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream)
 {
 	int ret = 0;
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -1330,8 +1334,9 @@ done:
 	return ret;
 }
 
-static int msm_pcm_hw_params(struct snd_pcm_substream *substream,
-			     struct snd_pcm_hw_params *params)
+static int msm_pcm_hw_params(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream,
+			struct snd_pcm_hw_params *params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_dma_buffer *dma_buf = &substream->dma_buffer;
@@ -1387,7 +1392,8 @@ done:
 	return ret;
 }
 
-static int msm_pcm_open(struct snd_pcm_substream *substream)
+static int msm_pcm_open(struct snd_soc_component *component,
+			struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct hpcm_drv *prtd = &hpcm_drv;
@@ -1443,17 +1449,8 @@ done:
 	return ret;
 }
 
-static const struct snd_pcm_ops msm_pcm_ops = {
-	.open           = msm_pcm_open,
-	.hw_params      = msm_pcm_hw_params,
-	.prepare        = msm_pcm_prepare,
-	.trigger        = msm_pcm_trigger,
-	.pointer        = msm_pcm_pointer,
-	.copy_user      = msm_pcm_copy,
-	.close          = msm_pcm_close,
-};
-
-static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
+static int msm_asoc_pcm_new(struct snd_soc_component *component,
+			struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_card *card = rtd->card->snd_card;
 
@@ -1474,9 +1471,15 @@ static int msm_pcm_hpcm_probe(struct snd_soc_component *component)
 
 static struct snd_soc_component_driver msm_soc_component = {
 	.name		= DRV_NAME,
-	.ops		= &msm_pcm_ops,
-	.pcm_new	= msm_asoc_pcm_new,
+	.pcm_construct	= msm_asoc_pcm_new,
 	.probe		= msm_pcm_hpcm_probe,
+	.open           = msm_pcm_open,
+	.hw_params      = msm_pcm_hw_params,
+	.prepare        = msm_pcm_prepare,
+	.trigger        = msm_pcm_trigger,
+	.pointer        = msm_pcm_pointer,
+	.copy_user      = msm_pcm_copy,
+	.close          = msm_pcm_close,
 };
 
 static int msm_pcm_probe(struct platform_device *pdev)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2011-2017, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/compat.h>
@@ -17,7 +18,7 @@
 #include <linux/mutex.h>
 #include <dsp/apr_audio-v2.h>
 #include "q6usm.h"
-#include "usf.h"
+#include <linux/usf.h>
 #include "usfcdev.h"
 #include "q6_init.h"
 

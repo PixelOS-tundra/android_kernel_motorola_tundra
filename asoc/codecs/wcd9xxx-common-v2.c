@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2018, 2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -8,7 +9,7 @@
 #include <sound/soc.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
-#include <audio/linux/mfd/wcd9xxx/wcd9xxx_registers.h>
+#include <linux/mfd/wcd9xxx/wcd9xxx_registers.h>
 #include <asoc/core.h>
 #include <asoc/wcd9xxx-common-v2.h>
 
@@ -298,11 +299,11 @@ static bool is_native_44_1_active(struct snd_soc_component *component)
 	bool native_active = false;
 	u8 native_clk, rx1_rate, rx2_rate;
 
-	native_clk = snd_soc_component_read32(component,
+	native_clk = snd_soc_component_read(component,
 				 WCD9XXX_CDC_CLK_RST_CTRL_MCLK_CONTROL);
-	rx1_rate = snd_soc_component_read32(component,
+	rx1_rate = snd_soc_component_read(component,
 				WCD9XXX_CDC_RX1_RX_PATH_CTL);
-	rx2_rate = snd_soc_component_read32(component,
+	rx2_rate = snd_soc_component_read(component,
 				WCD9XXX_CDC_RX2_RX_PATH_CTL);
 	dev_dbg(component->dev, "%s: native_clk %x rx1_rate= %x rx2_rate= %x",
 		__func__, native_clk, rx1_rate, rx2_rate);
@@ -388,7 +389,7 @@ wcd_enable_clsh_block(struct snd_soc_component *component,
 
 static inline bool wcd_clsh_enable_status(struct snd_soc_component *component)
 {
-	return snd_soc_component_read32(component, WCD9XXX_A_CDC_CLSH_CRC) &
+	return snd_soc_component_read(component, WCD9XXX_A_CDC_CLSH_CRC) &
 				0x01;
 }
 
@@ -555,7 +556,7 @@ static void wcd_clsh_flyback_ctrl(struct snd_soc_component *component,
 			snd_soc_component_update_bits(component,
 					WCD9XXX_FLYBACK_EN,
 					0x10, 0x10);
-			vneg[0] = snd_soc_component_read32(component,
+			vneg[0] = snd_soc_component_read(component,
 					       WCD9XXX_A_ANA_RX_SUPPLIES);
 			vneg[0] &= ~(0x40);
 			vneg[1] = vneg[0] | 0x40;

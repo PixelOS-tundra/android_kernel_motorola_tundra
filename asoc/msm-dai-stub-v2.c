@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2013-2014, 2017, 2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/init.h>
 #include <linux/module.h>
@@ -21,6 +22,35 @@ enum {
 	STUB_HOST_TX_CAPTURE_TX,
 	STUB_HOST_TX_PLAYBACK_RX,
 };
+struct msm_dai_stream_aif_name {
+	const char *stream_name;
+	const char *aif_name;
+};
+
+
+static struct msm_dai_stream_aif_name msm_dai_stub_stream_aif_names[] = {
+	{"Stub Playback","STUB_RX"},
+	{"Stub Capture","STUB_TX"},
+	{"Stub1 Capture","STUB_DTMF_TX"},
+	{"DTMF TX","STUB_DTMF_TX"},
+	{"CS-VOICE HOST RX CAPTURE","STUB_HOST_RX_CAPTURE_TX"},
+	{"CS-VOICE HOST TX CAPTURE","STUB_HOST_TX_CAPTURE_TX"},
+	{"CS-VOICE HOST RX PLAYBACK","STUB_HOST_RX_PLAYBACK_RX"},
+	{"CS-VOICE HOST TX PLAYBACK","STUB_HOST_TX_PLAYBACK_RX"},
+};
+
+
+static const char *  msm_dai_stub_get_aifname(const char *stream_name)
+{
+	int i=0,N=ARRAY_SIZE(msm_dai_stub_stream_aif_names);
+
+	for(i=0; i<N; i++){
+	if(msm_dai_stub_stream_aif_names[i].stream_name &&
+		!strcmp(stream_name,msm_dai_stub_stream_aif_names[i].stream_name))
+		return msm_dai_stub_stream_aif_names[i].aif_name ;
+	}
+	return 0;
+}
 
 static int msm_dai_stub_set_channel_map(struct snd_soc_dai *dai,
 		unsigned int tx_num, unsigned int *tx_slot,
@@ -39,32 +69,35 @@ static int msm_dai_stub_add_route(struct snd_soc_dai *dai)
 {
 	struct snd_soc_dapm_route intercon;
 	struct snd_soc_dapm_context *dapm;
-
-	if (!dai || !dai->driver) {
-		pr_err("%s Invalid params\n", __func__);
-		return -EINVAL;
-	}
+	const char *aif_name;
 	dapm = snd_soc_component_get_dapm(dai->component);
+
 	memset(&intercon, 0, sizeof(intercon));
-	if (dai->driver->playback.stream_name &&
-		dai->driver->playback.aif_name) {
-		dev_dbg(dai->dev, "%s add route for widget %s",
+	if (dai->driver->playback.stream_name) {
+		dev_dbg(dai->dev, "%s: add route for widget %s",
 			__func__, dai->driver->playback.stream_name);
-		intercon.source = dai->driver->playback.aif_name;
-		intercon.sink = dai->driver->playback.stream_name;
-		dev_dbg(dai->dev, "%s src %s sink %s\n",
-			__func__, intercon.source, intercon.sink);
-		snd_soc_dapm_add_routes(dapm, &intercon, 1);
+		aif_name = msm_dai_stub_get_aifname(dai->driver->playback.stream_name);
+		if(aif_name){
+			intercon.source = aif_name;
+			intercon.sink = dai->driver->playback.stream_name;
+			dev_dbg(dai->dev, "%s src %s sink %s\n",
+				__func__, intercon.source, intercon.sink);
+			snd_soc_dapm_add_routes(dapm, &intercon, 1);
+			snd_soc_dapm_ignore_suspend(dapm, intercon.source);
+		}
 	}
-	if (dai->driver->capture.stream_name &&
-		dai->driver->capture.aif_name) {
-		dev_dbg(dai->dev, "%s add route for widget %s",
+	if (dai->driver->capture.stream_name) {
+		dev_dbg(dai->dev, "%s: add route for widget %s",
 			__func__, dai->driver->capture.stream_name);
-		intercon.sink = dai->driver->capture.aif_name;
-		intercon.source = dai->driver->capture.stream_name;
-		dev_dbg(dai->dev, "%s src %s sink %s\n",
-			__func__, intercon.source, intercon.sink);
-		snd_soc_dapm_add_routes(dapm, &intercon, 1);
+		aif_name = msm_dai_stub_get_aifname(dai->driver->capture.stream_name);
+		if(aif_name){
+			intercon.sink = aif_name;
+			intercon.source = dai->driver->capture.stream_name;
+			dev_dbg(dai->dev, "%s src %s sink %s\n",
+				__func__, intercon.source, intercon.sink);
+			snd_soc_dapm_add_routes(dapm, &intercon, 1);
+			snd_soc_dapm_ignore_suspend(dapm, intercon.sink);
+		}
 	}
 	return 0;
 }
@@ -83,7 +116,6 @@ static int msm_dai_stub_dai_remove(struct snd_soc_dai *dai)
 static struct snd_soc_dai_driver msm_dai_stub_dai_rx = {
 	.playback = {
 		.stream_name = "Stub Playback",
-		.aif_name = "STUB_RX",
 		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 			SNDRV_PCM_RATE_16000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
@@ -101,7 +133,6 @@ static struct snd_soc_dai_driver msm_dai_stub_dai_tx[] = {
 	{
 		.capture = {
 			.stream_name = "Stub Capture",
-			.aif_name = "STUB_TX",
 			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 				SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S24_3LE |
@@ -118,7 +149,6 @@ static struct snd_soc_dai_driver msm_dai_stub_dai_tx[] = {
 	{
 		.capture = {
 			.stream_name = "Stub1 Capture",
-			.aif_name = "STUB_1_TX",
 			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 				SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE |SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S24_3LE |
@@ -137,7 +167,6 @@ static struct snd_soc_dai_driver msm_dai_stub_dai_tx[] = {
 static struct snd_soc_dai_driver msm_dai_stub_dtmf_tx_dai = {
 	.capture = {
 		.stream_name = "DTMF TX",
-		.aif_name = "STUB_DTMF_TX",
 		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 			 SNDRV_PCM_RATE_16000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
@@ -149,13 +178,13 @@ static struct snd_soc_dai_driver msm_dai_stub_dtmf_tx_dai = {
 	.ops = &msm_dai_stub_ops,
 	.probe = &msm_dai_stub_dai_probe,
 	.remove = &msm_dai_stub_dai_remove,
+	.name = "dtmf_tx",
 };
 
 static struct snd_soc_dai_driver msm_dai_stub_host_capture_tx_dai[] = {
 	{
 		.capture = {
 			.stream_name = "CS-VOICE HOST RX CAPTURE",
-			.aif_name = "STUB_HOST_RX_CAPTURE_TX",
 			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 				SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
@@ -167,11 +196,11 @@ static struct snd_soc_dai_driver msm_dai_stub_host_capture_tx_dai[] = {
 		.ops = &msm_dai_stub_ops,
 		.probe = &msm_dai_stub_dai_probe,
 		.remove = &msm_dai_stub_dai_remove,
+		.name = "rx_capture_tx",
 	},
 	{
 		.capture = {
 			.stream_name = "CS-VOICE HOST TX CAPTURE",
-			.aif_name = "STUB_HOST_TX_CAPTURE_TX",
 			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 				SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
@@ -183,6 +212,7 @@ static struct snd_soc_dai_driver msm_dai_stub_host_capture_tx_dai[] = {
 		.ops = &msm_dai_stub_ops,
 		.probe = &msm_dai_stub_dai_probe,
 		.remove = &msm_dai_stub_dai_remove,
+		.name = "tx_capture_tx",
 	},
 };
 
@@ -190,7 +220,6 @@ static struct snd_soc_dai_driver msm_dai_stub_host_playback_rx_dai[] = {
 	{
 		.playback = {
 			.stream_name = "CS-VOICE HOST RX PLAYBACK",
-			.aif_name = "STUB_HOST_RX_PLAYBACK_RX",
 			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 				 SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
@@ -202,11 +231,11 @@ static struct snd_soc_dai_driver msm_dai_stub_host_playback_rx_dai[] = {
 		.ops = &msm_dai_stub_ops,
 		.probe = &msm_dai_stub_dai_probe,
 		.remove = &msm_dai_stub_dai_remove,
+		.name = "rx_playback_rx",
 	},
 	{
 		.playback = {
 			.stream_name = "CS-VOICE HOST TX PLAYBACK",
-			.aif_name = "STUB_HOST_TX_PLAYBACK_RX",
 			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_8000 |
 				 SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
@@ -218,6 +247,7 @@ static struct snd_soc_dai_driver msm_dai_stub_host_playback_rx_dai[] = {
 		.ops = &msm_dai_stub_ops,
 		.probe = &msm_dai_stub_dai_probe,
 		.remove = &msm_dai_stub_dai_remove,
+		.name = "tx_playback_rx",
 	},
 };
 

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2016, 2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016, 2018 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __AUDIO_NOTIFIER_H_
@@ -65,7 +66,7 @@ struct audio_notifier_cb_data {
  * Returns:	Success: 0
  *		Error: -#
  */
-int audio_notifier_register(char *client_name, int domain,
+int audio_notifier_legacy_register(char *client_name, int domain,
 			    struct notifier_block *nb);
 
 /*
@@ -77,17 +78,17 @@ int audio_notifier_register(char *client_name, int domain,
  * Returns:	Success: 0
  *		Error: -#
  */
-int audio_notifier_deregister(char *client_name);
+int audio_notifier_legacy_deregister(char *client_name);
 
 #else
 
-static inline int audio_notifier_register(char *client_name, int domain,
+static inline int audio_notifier_legacy_register(char *client_name, int domain,
 					  struct notifier_block *nb)
 {
 	return 0;
 }
 
-static inline int audio_notifier_deregister(char *client_name)
+static inline int audio_notifier_legacy_deregister(char *client_name)
 {
 	return 0;
 }

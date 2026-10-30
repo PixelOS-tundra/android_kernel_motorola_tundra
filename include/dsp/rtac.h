@@ -30,7 +30,7 @@ enum {
 struct rtac_cal_mem_map_data {
 	uint32_t		map_size;
 	uint32_t		map_handle;
-	struct dma_buf		*dma_buf;
+	void			*mem_handle;
 };
 
 struct rtac_cal_data {

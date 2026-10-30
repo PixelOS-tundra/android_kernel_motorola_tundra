@@ -1,5 +1,7 @@
+
 // SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -278,6 +280,32 @@ static const struct snd_kcontrol_new display_port_config_controls[] = {
 		.get	= msm_dai_q6_ext_disp_drift_get,
 	},
 };
+struct msm_dai_stream_aif_name {
+	const char *stream_name;
+	const char *aif_name;
+};
+
+
+static struct msm_dai_stream_aif_name msm_dai_q6_hdmi_dai_stream_aif_names[] = {
+	{"HDMI Playback","HDMI"},
+	{"HDMI MS Playback","HDMI_MS"},
+	{"Display Port Playback","DISPLAY_PORT"},
+	{"Display Port1 Playback","DISPLAY_PORT1"},
+};
+
+
+static const char *  msm_dai_q6_hdmi_get_aifname(const char *stream_name)
+{
+	int i=0,N=ARRAY_SIZE(msm_dai_q6_hdmi_dai_stream_aif_names);
+
+	for(i=0; i<N; i++){
+	if(msm_dai_q6_hdmi_dai_stream_aif_names[i].stream_name &&
+		!strcmp(stream_name,msm_dai_q6_hdmi_dai_stream_aif_names[i].stream_name))
+		return msm_dai_q6_hdmi_dai_stream_aif_names[i].aif_name ;
+	}
+
+	return 0;
+}
 
 /* Current implementation assumes hw_param is called once
  * This may not be the case but what to do when ADM and AFE
@@ -420,6 +448,7 @@ static int msm_dai_q6_hdmi_dai_probe(struct snd_soc_dai *dai)
 	int rc = 0;
 	struct snd_soc_dapm_route intercon;
 	struct snd_soc_dapm_context *dapm;
+	const char *aif_name;
 
 	if (!dai || !dai->driver) {
 		pr_err("%s: dai or dai->driver is NULL\n", __func__);
@@ -488,29 +517,36 @@ static int msm_dai_q6_hdmi_dai_probe(struct snd_soc_dai *dai)
 		dev_set_drvdata(dai->dev, NULL);
 		return -EINVAL;
 	}
-
 	dapm = snd_soc_component_get_dapm(dai->component);
+
 	memset(&intercon, 0, sizeof(intercon));
-	if (!rc) {
-		if (dai->driver->playback.stream_name &&
-			dai->driver->playback.aif_name) {
-			dev_dbg(dai->dev, "%s add route for widget %s",
-				   __func__, dai->driver->playback.stream_name);
-			intercon.source = dai->driver->playback.aif_name;
-			intercon.sink = dai->driver->playback.stream_name;
-			dev_dbg(dai->dev, "%s src %s sink %s\n",
-				   __func__, intercon.source, intercon.sink);
-			snd_soc_dapm_add_routes(dapm, &intercon, 1);
+	if (!rc && dai && dai->driver) {
+		if (dai->driver->playback.stream_name) {
+			dev_dbg(dai->dev, "%s: add route for widget %s",
+				__func__, dai->driver->playback.stream_name);
+			aif_name = msm_dai_q6_hdmi_get_aifname(dai->driver->playback.stream_name);
+			if(aif_name){
+				intercon.source = aif_name;
+				intercon.sink = dai->driver->playback.stream_name;
+				dev_dbg(dai->dev, "%s src %s sink %s\n",
+					__func__, intercon.source, intercon.sink);
+				snd_soc_dapm_add_routes(dapm, &intercon, 1);
+				snd_soc_dapm_ignore_suspend(dapm, intercon.source);
+			}
 		}
-		if (dai->driver->capture.stream_name &&
-		   dai->driver->capture.aif_name) {
-			dev_dbg(dai->dev, "%s add route for widget %s",
-				   __func__, dai->driver->capture.stream_name);
-			intercon.sink = dai->driver->capture.aif_name;
-			intercon.source = dai->driver->capture.stream_name;
-			dev_dbg(dai->dev, "%s src %s sink %s\n",
-				   __func__, intercon.source, intercon.sink);
-			snd_soc_dapm_add_routes(dapm, &intercon, 1);
+		if (dai->driver->capture.stream_name) {
+			dev_dbg(dai->dev, "%s: add route for widget %s",
+				__func__, dai->driver->capture.stream_name);
+			aif_name = msm_dai_q6_hdmi_get_aifname(dai->driver->capture.stream_name);
+			if(aif_name){
+				intercon.sink = aif_name;
+				intercon.source = dai->driver->capture.stream_name;
+				dev_dbg(dai->dev, "%s src %s sink %s\n",
+					__func__, intercon.source, intercon.sink);
+				snd_soc_dapm_add_routes(dapm, &intercon, 1);
+				snd_soc_dapm_ignore_suspend(dapm, intercon.sink);
+			}
+
 		}
 	}
 	return rc;
@@ -545,7 +581,6 @@ static struct snd_soc_dai_ops msm_dai_q6_hdmi_ops = {
 static struct snd_soc_dai_driver msm_dai_q6_hdmi_hdmi_rx_dai = {
 	.playback = {
 		.stream_name = "HDMI Playback",
-		.aif_name = "HDMI",
 		.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
 			 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |
 			 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |
@@ -567,7 +602,6 @@ static struct snd_soc_dai_driver msm_dai_q6_hdmi_hdmi_rx_dai = {
 static struct snd_soc_dai_driver msm_dai_q6_hdmi_hdmi_ms_rx_dai = {
 	.playback = {
 		.stream_name = "HDMI MS Playback",
-		.aif_name = "HDMI_MS",
 		.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
 			 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |
 			 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |
@@ -590,7 +624,6 @@ static struct snd_soc_dai_driver msm_dai_q6_display_port_rx_dai[] = {
 	{
 		.playback = {
 			.stream_name = "Display Port Playback",
-			.aif_name = "DISPLAY_PORT",
 			.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
 				 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |
 				 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |
@@ -611,7 +644,6 @@ static struct snd_soc_dai_driver msm_dai_q6_display_port_rx_dai[] = {
 	{
 		.playback = {
 			.stream_name = "Display Port1 Playback",
-			.aif_name = "DISPLAY_PORT1",
 			.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
 				 SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_88200 |
 				 SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |
@@ -633,6 +665,7 @@ static struct snd_soc_dai_driver msm_dai_q6_display_port_rx_dai[] = {
 
 static const struct snd_soc_component_driver msm_dai_hdmi_q6_component = {
 	.name		= "msm-dai-q6-hdmi",
+	.legacy_dai_naming	= 1,
 };
 
 /* To do: change to register DAIs as batch */
