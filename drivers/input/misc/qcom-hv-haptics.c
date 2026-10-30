@@ -4941,7 +4941,10 @@ static int haptics_start_lra_calibrate(struct haptics_chip *chip)
 	msleep(50);
 
 	rc = haptics_start_auto_brake_calibration(chip);
-	if (rc < 0) {
+	if (rc == -EOPNOTSUPP) {
+		/* only HAP525_HV with an SDAM has auto brake calibration */
+		rc = 0;
+	} else if (rc < 0) {
 		dev_err(chip->dev, "Run auto brake calibration failed, rc=%d\n", rc);
 		goto unlock;
 	}
