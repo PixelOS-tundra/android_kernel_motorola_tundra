@@ -509,15 +509,14 @@ int32_t cam_sensor_update_slave_info(struct cam_cmd_probe *probe_info,
 	s_ctrl->sensordata->slave_info.sensor_id_mask =
 		probe_info->data_mask;
 	/*
-         * Userspace passes the first 8 bit pipeline delay
-         * and last 8 bit slave address in reserved field.
-         */
-	s_ctrl->pipeline_delay =
-		(probe_info->reserved >> 8) & 0xFF;
+	 * The stock (5.4 ABI) CamX passes only the pipeline delay in the
+	 * reserved field, with no slave address override in its low byte.
+	 */
+	s_ctrl->pipeline_delay = probe_info->reserved;
 
 	s_ctrl->sensor_probe_addr_type =  probe_info->addr_type;
 	s_ctrl->sensor_probe_data_type =  probe_info->data_type;
-	s_ctrl->probe_sensor_slave_addr = ( probe_info->reserved & 0xFF );
+	s_ctrl->probe_sensor_slave_addr = 0;
 
 #ifdef CONFIG_CAMERA_SUB_DEVICE_PROBE
 	s_ctrl->probe_sub_device          =  probe_info->probe_sub_device;
