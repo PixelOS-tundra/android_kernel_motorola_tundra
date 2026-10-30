@@ -6,8 +6,11 @@
 # that by default (SAFE_FSTAB=1) "formattable" and "check" are stripped from
 # the first-stage fstab, so a misbehaving storage driver can never make
 # fs_mgr fsck or reformat /metadata or /data.
-# DTB=<file> overrides the DTB put into vendor_boot; DTB=keep keeps the one
-# already in the input vendor_boot.img. BOOT_CMDLINE=<args> sets the boot.img
+# By default vendor_boot gets the built lahaina-moto-base-v2.1 + lahaina-moto-base
+# DTBs, concatenated in the stock order. DTB=<file> overrides the DTB put into
+# vendor_boot; DTB=keep keeps the one already in the input vendor_boot.img.
+# Images meant to be flashed should be packed with SAFE_FSTAB=0 and the
+# phone's own vendor_boot.img as input, so only the DTB changes. BOOT_CMDLINE=<args> sets the boot.img
 # cmdline.
 # FIRST_STAGE_FSTAB=1 adds first_stage_ramdisk/fstab.default to the boot.img
 # ramdisk. First-stage init reads it before the stock fstab.qcom
@@ -32,7 +35,7 @@ DTS=$OUT/arch/arm64/boot/dts/vendor/qcom
 SAFE_FSTAB=${SAFE_FSTAB:-1}
 FIRST_STAGE_FSTAB=${FIRST_STAGE_FSTAB:-0}
 RAMDISK_PROPS=${RAMDISK_PROPS:-}
-DTB=${DTB:-$DTS/lahaina-tundra-base.dtb}
+DTB=${DTB:-default}
 
 mkdir -p "$DEST"
 tmp=$(mktemp -d)
@@ -102,6 +105,10 @@ eval python3 "$MKB/mkbootimg.py" "$(cat "$tmp/boot.args")" \
 	${BOOT_CMDLINE:+--cmdline "\"$BOOT_CMDLINE\""} \
 	--output "$DEST/boot.img"
 [ "$DTB" = keep ] && DTB=$tmp/vendor_boot/dtb
+if [ "$DTB" = default ]; then
+	cat "$DTS"/lahaina-moto-base-v2.1.dtb "$DTS"/lahaina-moto-base.dtb > "$tmp/dtb"
+	DTB=$tmp/dtb
+fi
 eval python3 "$MKB/mkbootimg.py" "$(cat "$tmp/vendor_boot.args")" \
 	--dtb "$DTB" --vendor_ramdisk "$vendor_ramdisk" \
 	--vendor_boot "$DEST/vendor_boot.img"
