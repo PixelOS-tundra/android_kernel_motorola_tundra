@@ -1640,10 +1640,11 @@ done:
 
 #ifdef CONFIG_COMPAT
 #if IS_ENABLED(CONFIG_AUDIO_QGKI)
-static int msm_pcm_compat_ioctl(struct snd_pcm_substream *substream,
-			 unsigned int cmd, void __user *arg)
+static int msm_pcm_compat_ioctl(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream,
+				unsigned int cmd, void __user *arg)
 {
-	return msm_pcm_ioctl(substream, cmd, arg);
+	return msm_pcm_ioctl(component, substream, cmd, arg);
 }
 #endif /* CONFIG_AUDIO_QGKI */
 #else
@@ -3791,7 +3792,7 @@ static int msm_asoc_pcm_new(struct snd_soc_component *component, struct snd_soc_
 }
 
 #if IS_ENABLED(CONFIG_AUDIO_QGKI)
-static snd_pcm_sframes_t msm_pcm_delay_blk(struct snd_pcm_substream *substream,
+static snd_pcm_sframes_t __maybe_unused msm_pcm_delay_blk(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -3826,6 +3827,9 @@ static struct snd_soc_component_driver msm_soc_component = {
 	.hw_params		= msm_pcm_hw_params,
 	.close          	= msm_pcm_close,
 	.ioctl          	= msm_pcm_ioctl,
+#if IS_ENABLED(CONFIG_AUDIO_QGKI)
+	.compat_ioctl		= msm_pcm_compat_ioctl,
+#endif
 	.prepare        	= msm_pcm_prepare,
 	.trigger        	= msm_pcm_trigger,
 	.pointer        	= msm_pcm_pointer,

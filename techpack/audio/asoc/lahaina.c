@@ -8189,7 +8189,7 @@ static int msm_snd_card_late_probe(struct snd_soc_card *card)
 {
 	struct snd_soc_component *component = NULL;
 	const char *be_dl_name = LPASS_BE_RX_CDC_DMA_RX_0;
-	struct snd_soc_pcm_runtime *rtd;
+	struct snd_soc_pcm_runtime *rtd, *rtd_iter;
 	struct msm_asoc_mach_data *pdata;
 	int ret = 0;
 	void *mbhc_calibration;
@@ -8202,7 +8202,13 @@ static int msm_snd_card_late_probe(struct snd_soc_card *card)
 	if (pdata->wcd_disabled)
 		return 0;
 
-	rtd = snd_soc_get_pcm_runtime(card, be_dl_name);
+	rtd = NULL;
+	for_each_card_rtds(card, rtd_iter) {
+		if (!strcmp(rtd_iter->dai_link->name, be_dl_name)) {
+			rtd = rtd_iter;
+			break;
+		}
+	}
 	if (!rtd) {
 		dev_err(card->dev,
 			"%s: snd_soc_get_pcm_runtime for %s failed!\n",
