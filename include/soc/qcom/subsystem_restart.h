@@ -196,12 +196,12 @@ static inline int subsystem_crashed(const char *name)
 	return 0;
 }
 
-extern int subsystem_start_notify(const char *name)
+static inline int subsystem_start_notify(const char *name)
 {
 	return 0;
 }
 
-extern int subsystem_stop_notify(const char *subsystem)
+static inline int subsystem_stop_notify(const char *subsystem)
 {
 	return 0;
 }
