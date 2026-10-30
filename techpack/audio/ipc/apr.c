@@ -1213,12 +1213,24 @@ static int apr_probe(struct platform_device *pdev)
 	spin_unlock(&apr_priv->apr_lock);
 
 	prop = of_find_property(pdev->dev.of_node, "qcom,rproc-handle", &size);
-	if (!prop) {
-		dev_err(&pdev->dev, "Missing remotproc handle\n");
-		ret = -EINVAL;
-		return ret;
+	if (prop) {
+		rproc_phandle = be32_to_cpup(prop->value);
+	} else {
+		/*
+		 * The 5.4 lahaina DT has no qcom,rproc-handle (APR followed
+		 * the "adsp" subsystem there); use the LPASS remoteproc.
+		 */
+		struct device_node *adsp_np;
+
+		adsp_np = of_find_node_by_name(NULL, "qcom,lpass");
+		if (!adsp_np) {
+			dev_err(&pdev->dev, "Missing remotproc handle\n");
+			ret = -EINVAL;
+			return ret;
+		}
+		rproc_phandle = adsp_np->phandle;
+		of_node_put(adsp_np);
 	}
-	rproc_phandle = be32_to_cpup(prop->value);
 
 	rproc_h = rproc_get_by_phandle(rproc_phandle);
 	if (!rproc_h) {
