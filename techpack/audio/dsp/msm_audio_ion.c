@@ -234,10 +234,14 @@ static int msm_audio_dma_buf_unmap(void *handle, bool cma_mem)
 		alloc_data = list_entry(ptr, struct msm_audio_alloc_data, list);
 		if (alloc_data->type == MSM_AUDIO_MEM_TYPE_ION) {
 			if (alloc_data->handle == handle) {
-				/* imported CMA buffers have no kernel mapping */
-				if (alloc_data->vaddr)
+				/*
+				 * The kernel mapping is in vmap (vaddr is
+				 * never set for dma-bufs); imported CMA
+				 * buffers have none.
+				 */
+				if (alloc_data->vmap)
 					rc = msm_audio_ion_unmap_kernel(
-							alloc_data->vaddr,
+							alloc_data->vmap,
 							handle, cma_mem);
 			if (rc) {
 				pr_err("%s: Unable to unmap ion mem rc: %d\n",
@@ -247,6 +251,7 @@ static int msm_audio_dma_buf_unmap(void *handle, bool cma_mem)
 			}
 
 				found = true;
+				kfree(alloc_data->vmap);
 				dma_buf_unmap_attachment(alloc_data->attach,
 							 alloc_data->table,
 							 DMA_BIDIRECTIONAL);
