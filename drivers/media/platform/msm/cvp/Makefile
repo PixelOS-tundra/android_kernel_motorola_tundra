@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 ccflags-y += -I$(srctree)/drivers/media/platform/msm/cvp/
 ccflags-y += -I$(srctree)/drivers/media/platform/msm/synx/
+# No PIL on 6.1: load the EVA firmware with the mdt loader and PAS calls
+ccflags-y += -DCVP_MDT_ENABLED
 
 msm-cvp-objs := cvp.o \
 				msm_cvp_ioctl.o \
