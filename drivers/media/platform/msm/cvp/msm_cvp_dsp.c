@@ -6,6 +6,7 @@
 #include <linux/rpmsg.h>
 #include <linux/of_platform.h>
 #include <linux/of_fdt.h>
+#include <soc/qcom/of_common.h>
 #include <soc/qcom/secure_buffer.h>
 #include "msm_cvp_dsp.h"
 #include "msm_cvp_internal.h"
@@ -103,6 +104,27 @@ static int cvp_dsp_send_cmd_hfi_queue(phys_addr_t *phys_addr,
 	}
 exit:
 	return rc;
+}
+
+/* 5.4 secure_buffer.c exported this; 6.1 only has hyp_assign_table() */
+static int hyp_assign_phys(phys_addr_t addr, u64 size, int *source_vm_list,
+			   int source_nelems, int *dest_vmids,
+			   int *dest_perms, int dest_nelems)
+{
+	struct sg_table table;
+	int ret;
+
+	ret = sg_alloc_table(&table, 1, GFP_KERNEL);
+	if (ret)
+		return ret;
+
+	sg_set_page(table.sgl, phys_to_page(addr), size, 0);
+
+	ret = hyp_assign_table(&table, (u32 *)source_vm_list, source_nelems,
+			       dest_vmids, dest_perms, dest_nelems);
+
+	sg_free_table(&table);
+	return ret;
 }
 
 static int cvp_hyp_assign_to_dsp(uint64_t addr, uint32_t size)

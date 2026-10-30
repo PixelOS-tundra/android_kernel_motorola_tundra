@@ -314,8 +314,10 @@ static int alloc_dma_mem(size_t size, u32 align, u32 flags, int map_kernel,
 	}
 
 	if (map_kernel) {
+		struct iosys_map map;
+
 		dma_buf_begin_cpu_access(dbuf, DMA_BIDIRECTIONAL);
-		mem->kvaddr = dma_buf_vmap(dbuf);
+		mem->kvaddr = dma_buf_vmap(dbuf, &map) ? NULL : map.vaddr;
 		if (!mem->kvaddr) {
 			dprintk(CVP_ERR,
 				"Failed to map shared mem in kernel\n");
@@ -352,7 +354,9 @@ static int free_dma_mem(struct msm_cvp_smem *mem)
 	}
 
 	if (mem->kvaddr) {
-		dma_buf_vunmap(mem->dma_buf, mem->kvaddr);
+		struct iosys_map map = IOSYS_MAP_INIT_VADDR(mem->kvaddr);
+
+		dma_buf_vunmap(mem->dma_buf, &map);
 		mem->kvaddr = NULL;
 		dma_buf_end_cpu_access(mem->dma_buf, DMA_BIDIRECTIONAL);
 	}
