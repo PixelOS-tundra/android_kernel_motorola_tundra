@@ -9670,6 +9670,23 @@ static int msm_pcie_probe(struct platform_device *pdev)
 	if (rc_idx >= MAX_RC_NUM)
 		goto out;
 
+	/*
+	 * The 5.4 DTs have no device_type, which the 5.4 ranges parser did
+	 * not need. Without it the ranges are parsed with the default bus,
+	 * the I/O and memory windows keep unknown flags and no BAR can be
+	 * assigned.
+	 */
+	if (!of_find_property(of_node, "device_type", NULL)) {
+		struct property *prop = kzalloc(sizeof(*prop), GFP_KERNEL);
+
+		if (prop) {
+			prop->name = "device_type";
+			prop->value = "pci";
+			prop->length = sizeof("pci");
+			of_add_property(of_node, prop);
+		}
+	}
+
 	bridge = devm_pci_alloc_host_bridge(&pdev->dev, sizeof(struct msm_pcie_dev_t));
 	if (!bridge) {
 		ret = -ENOMEM;
