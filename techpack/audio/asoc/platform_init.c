@@ -27,7 +27,6 @@ static int __init audio_platform_init(void)
 	msm_soc_routing_platform_init();
 	msm_pcm_voice_init();
 	msm_pcm_voip_init();
-	msm_transcode_loopback_init();
 	msm_voice_host_init();
 
 	return 0;
@@ -35,7 +34,6 @@ static int __init audio_platform_init(void)
 
 static void audio_platform_exit(void)
 {
-	msm_transcode_loopback_exit();
 	msm_pcm_voip_exit();
 	msm_pcm_voice_exit();
 	msm_soc_routing_platform_exit();
