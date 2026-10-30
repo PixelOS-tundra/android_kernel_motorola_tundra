@@ -582,7 +582,9 @@ static void init_iovad_attr(void *unused, struct device *dev,
 	u32 shift;
 
 	node = dev->of_node;
-	if (of_property_read_bool(node, "qcom,iova-best-fit"))
+	/* The 5.4 msm_vidc selected best fit for its context banks itself */
+	if (of_property_read_bool(node, "qcom,iova-best-fit") ||
+	    of_device_is_compatible(node, "qcom,msm-vidc,context-bank"))
 		iovad_set_best_fit_iova(iovad);
 
 	if (!of_property_read_u32(node, "qcom,iova-max-align-shift", &shift))
