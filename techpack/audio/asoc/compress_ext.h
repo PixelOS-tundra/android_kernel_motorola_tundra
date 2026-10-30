@@ -6,6 +6,8 @@
 #ifndef _COMPRESS_EXT
 #define _COMPRESS_EXT
 
+#include <sound/compress_offload.h>
+
 /* The tundra kernel carries the 5.4 Qualcomm compress UAPI already. */
 #ifndef SND_COMPR_AUDIO_INFO
 
