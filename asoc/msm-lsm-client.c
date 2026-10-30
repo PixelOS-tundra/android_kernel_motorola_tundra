@@ -40,7 +40,6 @@
 #define CAPTURE_MIN_PERIOD_SIZE     320
 #define LISTEN_MAX_STATUS_PAYLOAD_SIZE 256
 
-#define WAKELOCK_TIMEOUT	2000
 
 #define LAB_BUFFER_ALLOC 1
 #define LAB_BUFFER_DEALLOC 0
@@ -155,7 +154,6 @@ struct lsm_priv {
 	int xrun_count;
 	int xrun_index;
 	spinlock_t xrun_lock;
-	struct wakeup_source *ws;
 };
 
 enum { /* lsm session states */
@@ -283,7 +281,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 	}
 	rtd = substream->private_data;
 
-	pm_wakeup_ws_event(prtd->ws, WAKELOCK_TIMEOUT, true);
 	dev_dbg(rtd->dev, "%s: opcode %x\n", __func__, opcode);
 	switch (opcode) {
 	case LSM_DATA_EVENT_READ_DONE: {
@@ -298,13 +295,11 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 				"%s: EVENT_READ_DONE invalid callback, session %d callback %d payload %pK",
 				__func__, prtd->lsm_client->session,
 				token, read_done);
-			__pm_relax(prtd->ws);
 			return;
 		}
 		if (atomic_read(&prtd->read_abort)) {
 			dev_dbg(rtd->dev,
 				"%s: read abort set skip data\n", __func__);
-			__pm_relax(prtd->ws);
 			return;
 		}
 		if (!lsm_lab_buffer_sanity(prtd, read_done, &buf_index)) {
@@ -317,7 +312,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 					"%s: Invalid index %d buf_index max cnt %d\n",
 					__func__, buf_index,
 				prtd->lsm_client->out_hw_params.period_count);
-				__pm_relax(prtd->ws);
 				return;
 			}
 			spin_lock_irqsave(&prtd->xrun_lock, flags);
@@ -355,7 +349,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 			dev_err(rtd->dev,
 					"%s: client_size has invalid size[%d]\n",
 					__func__, client_size);
-			__pm_relax(prtd->ws);
 			return;
 		}
 		status = (uint16_t)((uint8_t *)payload)[0];
@@ -371,7 +364,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 			dev_err(rtd->dev,
 					"%s: client_size has invalid size[%d]\n",
 					__func__, client_size);
-			__pm_relax(prtd->ws);
 			return;
 		}
 		status = (uint16_t)((uint8_t *)payload)[0];
@@ -387,7 +379,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 			dev_err(rtd->dev,
 					"%s: client_size has invalid size[%d]\n",
 					__func__, client_size);
-			__pm_relax(prtd->ws);
 			return;
 		}
 		event_ts_lsw = ((uint32_t *)payload)[0];
@@ -407,7 +398,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 			dev_err(rtd->dev,
 					"%s: client_size has invalid size[%d]\n",
 					__func__, client_size);
-			__pm_relax(prtd->ws);
 			return;
 		}
 
@@ -427,7 +417,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 				"LSM_SESSION_DETECTION_ENGINE_GENERIC_EVENT",
 				sizeof(struct snd_lsm_event_status) +
 				payload_size);
-			__pm_relax(prtd->ws);
 			return;
 		}
 
@@ -442,7 +431,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 			dev_err(rtd->dev,
 				"%s: Failed to copy memory with invalid size = %d\n",
 				__func__, payload_size);
-			__pm_relax(prtd->ws);
 			return;
 		}
 		prtd->event_avail = 1;
@@ -476,7 +464,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 			dev_err(rtd->dev, "%s: no memory for event status\n",
 				__func__);
 			spin_unlock_irqrestore(&prtd->event_lock, flags);
-			__pm_relax(prtd->ws);
 			return;
 		}
 		/*
@@ -503,7 +490,6 @@ static void lsm_event_handler(uint32_t opcode, uint32_t token,
 				dev_err(rtd->dev,
 						"%s: Failed to copy memory with invalid size = %d\n",
 						__func__, payload_size);
-				__pm_relax(prtd->ws);
 				return;
 			}
 		} else {
@@ -1514,7 +1500,6 @@ static int msm_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 			dev_err(rtd->dev,
 				"%s: lsm open failed, %d\n",
 				__func__, ret);
-			__pm_relax(prtd->ws);
 			return ret;
 		}
 		prtd->lsm_client->opened = true;
@@ -1864,14 +1849,12 @@ static int msm_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 		if (prtd->lsm_client->num_stages > 1) {
 			dev_err(rtd->dev, "%s: %s: not supported for multi stage session\n",
 				__func__, "LSM_LAB_CONTROL");
-			__pm_relax(prtd->ws);
 			return -EINVAL;
 		}
 
 		if (copy_from_user(&enable, arg, sizeof(enable))) {
 			dev_err(rtd->dev, "%s: %s: copy_frm_user failed\n",
 				__func__, "LSM_LAB_CONTROL");
-			__pm_relax(prtd->ws);
 			return -EFAULT;
 		}
 
@@ -1926,7 +1909,6 @@ static int msm_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 		if (copy_from_user(&mode, arg, sizeof(mode))) {
 			dev_err(rtd->dev, "%s: %s: copy_frm_user failed\n",
 				__func__, "LSM_SET_FWK_MODE_CONFIG");
-			__pm_relax(prtd->ws);
 			return -EFAULT;
 		}
 
@@ -1957,7 +1939,6 @@ static int msm_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 		if (copy_from_user(&params, arg, sizeof(params))) {
 			dev_err(rtd->dev, "%s: %s: copy_from_user failed\n",
 				__func__, "LSM_SET_INPUT_HW_PARAMS");
-			__pm_relax(prtd->ws);
 			return -EFAULT;
 		}
 
@@ -1984,7 +1965,6 @@ static int msm_lsm_ioctl_shared(struct snd_pcm_substream *substream,
 		dev_err(rtd->dev, "%s: cmd 0x%x failed %d\n",
 			__func__, cmd, rc);
 
-	__pm_relax(prtd->ws);
 	return rc;
 }
 
@@ -3184,7 +3164,6 @@ static int msm_lsm_open(struct snd_soc_component *component, struct snd_pcm_subs
 	for (i = 0; i < LSM_MAX_STAGES_PER_SESSION; i++)
 		INIT_LIST_HEAD(&prtd->lsm_client->stage_cfg[i].sound_models);
 
-	prtd->ws = wakeup_source_register(rtd->dev, "lsm-client");
 
 #ifdef ENABLE_SVA_MIXER_CTL
 	msm_lsm_cdev_session_lut(substream, SET_INFO);
@@ -3453,7 +3432,6 @@ static int msm_lsm_close(struct snd_soc_component *component, struct snd_pcm_sub
 
 	q6lsm_client_free(prtd->lsm_client);
 
-	wakeup_source_unregister(prtd->ws);
 	spin_lock_irqsave(&prtd->event_lock, flags);
 	kfree(prtd->event_status);
 	prtd->event_status = NULL;
@@ -3981,7 +3959,6 @@ static int msm_lsm_va_sess_data_ctl_put(struct snd_kcontrol *kcontrol,
 	ret = q6lsm_open(prtd->lsm_client, ses_data.app_id);
 	if (ret < 0) {
 		dev_err(rtd->dev, "%s: lsm open failed, %d\n", __func__, ret);
-		__pm_relax(prtd->ws);
 		mutex_unlock(&lsm_dev->lock);
 		return ret;
 	}
@@ -4618,7 +4595,6 @@ static int msm_lsm_input_hw_params_put(struct snd_kcontrol *kcontrol,
 	if (copy_from_user(&params, bytes, size)) {
 		dev_err(rtd->dev, "%s: %s: copy_from_user failed\n",
 				__func__, "LSM_SET_INPUT_HW_PARAMS");
-		__pm_relax(prtd->ws);
 		mutex_unlock(&lsm_dev->lock);
 		return -EFAULT;
 	}
@@ -5131,7 +5107,6 @@ static long msm_lsm_cdev_ioctl(struct file *file,
 		{
 			pr_err("%s: copy to user failed", __func__);
 		}
-		__pm_relax(prtd->ws);
 		break;
 		case LSM_LUT_CLEAR_INFO:
 		{
