@@ -77,3 +77,4 @@ obj-$(CONFIG_CCI_UTIL)          += dpin_cci_util.o
 obj-$(CONFIG_LONTIUM_LT7911UXC) += lontium-lt7911uxc.o
 obj-$(CONFIG_MMI_SYS_TEMP)	+= mmi_sys_temp/
 obj-$(CONFIG_MOTO_UTAGS)	+= utag/
+obj-$(CONFIG_SARSENSOR_SX937X)	+= sx937x/
