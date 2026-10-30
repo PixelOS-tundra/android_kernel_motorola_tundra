@@ -103,6 +103,43 @@ static struct thermal_cooling_device_ops ddr_cdev_ops = {
 	.set_cur_state = ddr_set_cur_state,
 };
 
+/*
+ * The 5.4 binding: "qcom,ddr-freq" is the whole bandwidth table in KBps,
+ * starting with the "no vote" entry, with no bus width to scale by.
+ */
+static int ddr_cdev_legacy_table(struct device *dev, struct device_node *np,
+				 struct ddr_cdev *ddr_cdev)
+{
+	uint32_t *freq_table;
+	int opp_ct, ret;
+
+	opp_ct = of_property_count_elems_of_size(np, "qcom,ddr-freq",
+						 sizeof(u32));
+	if (opp_ct <= 0) {
+		dev_err(dev, "No DDR frequency entries\n");
+		return -ENODEV;
+	}
+
+	freq_table = devm_kcalloc(dev, opp_ct, sizeof(*freq_table), GFP_KERNEL);
+	if (!freq_table)
+		return -ENOMEM;
+
+	ret = of_property_read_u32_array(np, "qcom,ddr-freq", freq_table,
+					 opp_ct);
+	if (ret < 0) {
+		dev_err(dev, "DDR frequency read error:%d\n", ret);
+		return ret;
+	}
+
+	ddr_cdev->freq_table = freq_table;
+	ddr_cdev->freq_table_size = opp_ct;
+	ddr_cdev->cur_state = 0;
+	ddr_cdev->max_state = opp_ct - 1;
+	ddr_cdev->dev = dev;
+
+	return 0;
+}
+
 static int ddr_cdev_probe(struct platform_device *pdev)
 {
 	int ret = 0, opp_ct = 0, bus_width = 1, idx = 0;
@@ -125,9 +162,10 @@ static int ddr_cdev_probe(struct platform_device *pdev)
 	}
 
 	if (!of_find_property(np, "qcom,freq-table", &opp_ct)) {
-		dev_err(dev, "No DDR frequency entries\n");
-		ret = -ENODEV;
-		goto err_exit;
+		ret = ddr_cdev_legacy_table(dev, np, ddr_cdev);
+		if (ret)
+			goto err_exit;
+		goto register_cdev;
 	}
 
 	if (opp_ct <= 0) {
@@ -169,7 +207,8 @@ static int ddr_cdev_probe(struct platform_device *pdev)
 	for (idx = 0; idx < opp_ct; idx++)
 		ddr_cdev->freq_table[idx] *= bus_width;
 
-	ret = icc_set_bw(ddr_cdev->icc_path, 0, freq_table[0]);
+register_cdev:
+	ret = icc_set_bw(ddr_cdev->icc_path, 0, ddr_cdev->freq_table[0]);
 	if (ret < 0) {
 		dev_err(dev, "Error placing DDR freq request. err:%d\n",
 			ret);
