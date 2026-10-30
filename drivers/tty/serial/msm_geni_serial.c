@@ -1406,6 +1406,17 @@ static int vote_clock_off(struct uart_port *uport)
 	return 0;
 };
 
+/*
+ * The pre-6.1 asm-generic TTY PM ioctls. The 5.4 driver accepted them next to
+ * the MSM_GENI_SERIAL_TIOC* numbers, and the stock lahaina Bluetooth HAL votes
+ * the UART clock only through them.
+ */
+#ifndef TIOCPMGET
+#define TIOCPMGET	0x544D	/* PM get */
+#define TIOCPMPUT	0x544E	/* PM put */
+#define TIOCPMACT	0x544F	/* PM is active */
+#endif
+
 static int msm_geni_serial_ioctl(struct uart_port *uport, unsigned int cmd,
 						unsigned long arg)
 {
@@ -1419,14 +1430,17 @@ static int msm_geni_serial_ioctl(struct uart_port *uport, unsigned int cmd,
 		return ret;
 
 	switch (cmd) {
+	case TIOCPMGET:
 	case MSM_GENI_SERIAL_TIOCPMGET: {
 		ret = vote_clock_on(uport);
 		break;
 	}
+	case TIOCPMPUT:
 	case MSM_GENI_SERIAL_TIOCPMPUT: {
 		ret = vote_clock_off(uport);
 		break;
 	}
+	case TIOCPMACT:
 	case MSM_GENI_SERIAL_TIOCPMACT: {
 		ret = !pm_runtime_status_suspended(uport->dev);
 		break;
