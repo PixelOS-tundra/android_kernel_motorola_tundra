@@ -8470,6 +8470,12 @@ static struct snd_soc_card *populate_snd_card_dailinks(struct device *dev)
 #endif
 
 		rc = of_property_read_u32(dev->of_node, "qcom,wcn-bt", &val);
+		/* DEBUG: no btfmslim_slave codec without the slimbus port */
+		if (!IS_ENABLED(CONFIG_BTFM_SLIM) && !rc && val) {
+			dev_warn(dev, "%s: skipping WCN BT links, no BTFM_SLIM\n",
+				 __func__);
+			val = 0;
+		}
 		if (!rc && val) {
 			dev_dbg(dev, "%s(): WCN BT support present\n",
 				__func__);
