@@ -360,18 +360,15 @@ static void wl2864c_i2c_shutdown(struct i2c_client *client)
 	}
 }
 
-static int wl2864c_i2c_remove(struct i2c_client *client)
+static void wl2864c_i2c_remove(struct i2c_client *client)
 {
 	struct wl2864c *chip = i2c_get_clientdata(client);
 	struct gpio_desc *desc;
-	int ret = 0;
 
 	if (chip->chip_cs_pin > 0) {
 		desc = gpio_to_desc(chip->chip_cs_pin);
-		ret = gpiod_direction_output_raw(desc, GPIOF_INIT_LOW);
+		gpiod_direction_output_raw(desc, GPIOF_INIT_LOW);
 	}
-
-	return ret;
 }
 
 static const struct i2c_device_id wl2864c_i2c_id[] = {
