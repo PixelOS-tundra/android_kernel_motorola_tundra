@@ -34,14 +34,10 @@ struct pe_sensor_data {
 	struct mutex			mutex;
 };
 
-static int pe_sensor_get_trend(void *data, int trip, enum thermal_trend *trend)
+static int pe_sensor_get_trend(struct thermal_zone_device *tz, int trip,
+			       enum thermal_trend *trend)
 {
-	struct pe_sensor_data *pe_sens = (struct pe_sensor_data *)data;
-	struct thermal_zone_device *tz = pe_sens->tz_dev;
 	int value, last_value;
-
-	if (!tz)
-		return -EINVAL;
 
 	value = READ_ONCE(tz->temperature);
 	last_value = READ_ONCE(tz->last_temperature);
@@ -69,16 +65,16 @@ static int fetch_mitigation_table_idx(struct pe_sensor_data *pe_sens, int *temp)
 	return 0;
 }
 
-static int pe_sensor_read(void *data, int *temp)
+static int pe_sensor_read(struct thermal_zone_device *tz, int *temp)
 {
-	struct pe_sensor_data *pe_sens = (struct pe_sensor_data *)data;
+	struct pe_sensor_data *pe_sens = tz->devdata;
 
 	return fetch_mitigation_table_idx(pe_sens, temp);
 }
 
-static int pe_sensor_set_trips(void *data, int low, int high)
+static int pe_sensor_set_trips(struct thermal_zone_device *tz, int low, int high)
 {
-	struct pe_sensor_data *pe_sens = (struct pe_sensor_data *)data;
+	struct pe_sensor_data *pe_sens = tz->devdata;
 
 	mutex_lock(&pe_sens->mutex);
 	if (pe_sens->high_thresh == high &&
@@ -94,7 +90,7 @@ unlock_exit:
 	return 0;
 }
 
-static struct thermal_zone_of_device_ops pe_sensor_ops = {
+static const struct thermal_zone_device_ops pe_sensor_ops = {
 	.get_temp = pe_sensor_read,
 	.set_trips = pe_sensor_set_trips,
 	.get_trend = pe_sensor_get_trend,
@@ -146,13 +142,12 @@ static int pe_sens_device_probe(struct platform_device *pdev)
 		dev_err(dev, "Couldn't get MEM resource\n");
 		return -EINVAL;
 	}
-	dev_dbg(dev, "pe@0x%x size:%d\n", res->start,
-			resource_size(res));
+	dev_dbg(dev, "pe@%pR\n", res);
 
 	pe_sens->regmap = devm_ioremap_resource(dev, res);
-	if (!pe_sens->regmap) {
+	if (IS_ERR(pe_sens->regmap)) {
 		dev_err(dev, "Couldn't get regmap\n");
-		return -EINVAL;
+		return PTR_ERR(pe_sens->regmap);
 	}
 
 	pe_sens->irq_num = platform_get_irq(pdev, 0);
@@ -160,7 +155,7 @@ static int pe_sens_device_probe(struct platform_device *pdev)
 		dev_err(dev, "Couldn't get irq number\n");
 		return pe_sens->irq_num;
 	}
-	pe_sens->tz_dev = devm_thermal_zone_of_sensor_register(
+	pe_sens->tz_dev = devm_thermal_of_zone_register(
 				dev, 0, pe_sens, &pe_sensor_ops);
 	if (IS_ERR_OR_NULL(pe_sens->tz_dev)) {
 		ret = PTR_ERR(pe_sens->tz_dev);
@@ -180,8 +175,8 @@ static int pe_sens_device_probe(struct platform_device *pdev)
 				dev_name(dev), pe_sens);
 	if (ret) {
 		dev_err(dev, "Couldn't get irq registered\n");
-		thermal_zone_of_sensor_unregister(pe_sens->dev,
-				pe_sens->tz_dev);
+		qti_update_tz_ops(pe_sens->tz_dev, false);
+		devm_thermal_of_zone_unregister(pe_sens->dev, pe_sens->tz_dev);
 		return ret;
 	}
 	enable_irq_wake(pe_sens->irq_num);
@@ -196,8 +191,8 @@ static int pe_sens_device_remove(struct platform_device *pdev)
 	struct pe_sensor_data *pe_sens =
 		(struct pe_sensor_data *)dev_get_drvdata(&pdev->dev);
 
-	thermal_zone_of_sensor_unregister(pe_sens->dev, pe_sens->tz_dev);
 	qti_update_tz_ops(pe_sens->tz_dev, false);
+	devm_thermal_of_zone_unregister(pe_sens->dev, pe_sens->tz_dev);
 
 	return 0;
 }
