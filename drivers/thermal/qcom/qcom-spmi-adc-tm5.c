@@ -177,6 +177,7 @@ struct adc_tm5_data {
 /**
  * struct adc_tm5_channel - ADC Thermal Monitoring channel data.
  * @channel: channel number.
+ * @sensor_id: thermal sensor id of the channel in the device tree.
  * @adc_channel: corresponding ADC channel number.
  * @cal_method: calibration method.
  * @prescale: channel scaling performed on the input signal.
@@ -194,6 +195,7 @@ struct adc_tm5_data {
  */
 struct adc_tm5_channel {
 	unsigned int		channel;
+	unsigned int		sensor_id;
 	unsigned int		adc_channel;
 	enum adc_tm5_cal_method	cal_method;
 	unsigned int		prescale;
@@ -238,6 +240,8 @@ struct adc_tm5_chip {
 	int			irq;
 	u16			base;
 	struct mutex		adc_mutex_lock;
+	bool			legacy_binding;
+	struct iio_channel	*legacy_iio;
 };
 
 static int adc_tm5_read(struct adc_tm5_chip *adc_tm, u16 offset, u8 *data, int len)
@@ -680,24 +684,24 @@ static int adc_tm5_register_tzd(struct adc_tm5_chip *adc_tm, bool set_trips)
 		adc_tm->channels[i].chip = adc_tm;
 		if (set_trips)
 			tzd = devm_thermal_of_zone_register(adc_tm->dev,
-						   adc_tm->channels[i].channel,
+						   adc_tm->channels[i].sensor_id,
 						   &adc_tm->channels[i],
 						   &adc_tm5_thermal_ops);
 		else
 			tzd = devm_thermal_of_zone_register(adc_tm->dev,
-						   adc_tm->channels[i].channel,
+						   adc_tm->channels[i].sensor_id,
 						   &adc_tm->channels[i],
 						   &adc_tm5_thermal_iio_ops);
 
 		if (IS_ERR(tzd)) {
 			if (PTR_ERR(tzd) == -ENODEV) {
 				dev_warn(adc_tm->dev, "thermal sensor on channel %d is not used\n",
-					 adc_tm->channels[i].channel);
+					 adc_tm->channels[i].sensor_id);
 				continue;
 			}
 
 			dev_err(adc_tm->dev, "Error registering TZ zone for channel %d: %ld\n",
-				adc_tm->channels[i].channel, PTR_ERR(tzd));
+				adc_tm->channels[i].sensor_id, PTR_ERR(tzd));
 			return PTR_ERR(tzd);
 		}
 		adc_tm->channels[i].tzd = tzd;
@@ -792,6 +796,82 @@ static int adc_tm5_gen2_init(struct adc_tm5_chip *chip)
 	return ret;
 }
 
+/*
+ * The 5.4 "qcom,adc-tm7" binding: a channel's "reg" is its ADC channel
+ * (SID << 8 | channel), which is also its thermal sensor id, the TM channel
+ * is the child's position, and the ADC channels are listed in the parent's
+ * "io-channels".
+ */
+static int adc_tm5_get_dt_legacy_channel_data(struct adc_tm5_chip *adc_tm,
+					      struct adc_tm5_channel *channel,
+					      struct device_node *node,
+					      unsigned int index)
+{
+	struct device *dev = adc_tm->dev;
+	const char *name = node->name;
+	struct of_phandle_args args;
+	u32 chan, value;
+	int i, ret;
+
+	ret = of_property_read_u32(node, "reg", &chan);
+	if (ret) {
+		dev_err(dev, "%s: invalid channel number %d\n", name, ret);
+		return ret;
+	}
+
+	if (index >= ADC_TM5_NUM_CHANNELS || (chan & 0xff) >= ADC5_MAX_CHANNEL) {
+		dev_err(dev, "%s: invalid channel %#x at %u\n", name, chan, index);
+		return -EINVAL;
+	}
+
+	channel->channel = index;
+	channel->sensor_id = chan;
+	channel->adc_channel = chan;
+
+	for (i = 0; adc_tm->legacy_iio[i].indio_dev; i++) {
+		ret = of_parse_phandle_with_fixed_args(dev->of_node,
+						       "io-channels", 1, i,
+						       &args);
+		if (ret < 0)
+			break;
+		of_node_put(args.np);
+		if (args.args[0] == chan) {
+			channel->iio = &adc_tm->legacy_iio[i];
+			break;
+		}
+	}
+	if (!channel->iio) {
+		dev_err(dev, "%s: ADC channel %#x not in io-channels\n", name, chan);
+		return -EINVAL;
+	}
+
+	/* 1:1 prescale is index 0 */
+	channel->prescale = 0;
+
+	ret = of_property_read_u32(node, "qcom,hw-settle-time", &value);
+	if (!ret) {
+		ret = qcom_adc5_hw_settle_time_from_dt(value, adc_tm->data->hw_settle);
+		if (ret < 0) {
+			dev_err(dev, "%s invalid hw-settle-time %d us\n",
+				name, value);
+			return ret;
+		}
+		channel->hw_settle_time = ret;
+	} else {
+		channel->hw_settle_time = VADC_DEF_HW_SETTLE_TIME;
+	}
+
+	if (of_property_read_bool(node, "qcom,ratiometric"))
+		channel->cal_method = ADC_TM5_RATIOMETRIC_CAL;
+	else
+		channel->cal_method = ADC_TM5_ABSOLUTE_CAL;
+
+	channel->decimation = ADC5_DECIMATION_DEFAULT;
+	channel->avg_samples = VADC_DEF_AVG_SAMPLES;
+
+	return 0;
+}
+
 static int adc_tm5_get_dt_channel_data(struct adc_tm5_chip *adc_tm,
 				       struct adc_tm5_channel *channel,
 				       struct device_node *node)
@@ -814,6 +894,7 @@ static int adc_tm5_get_dt_channel_data(struct adc_tm5_chip *adc_tm,
 	}
 
 	channel->channel = chan;
+	channel->sensor_id = chan;
 
 	/*
 	 * We are tied to PMIC's ADC controller, which always use single
@@ -1000,8 +1081,22 @@ static int adc_tm5_get_dt_data(struct adc_tm5_chip *adc_tm, struct device_node *
 		adc_tm->avg_samples = VADC_DEF_AVG_SAMPLES;
 	}
 
+	if (adc_tm->legacy_binding) {
+		adc_tm->legacy_iio = devm_iio_channel_get_all(dev);
+		if (IS_ERR(adc_tm->legacy_iio)) {
+			ret = PTR_ERR(adc_tm->legacy_iio);
+			if (ret != -EPROBE_DEFER)
+				dev_err(dev, "error getting io-channels: %d\n", ret);
+			return ret;
+		}
+	}
+
 	for_each_available_child_of_node(node, child) {
-		ret = adc_tm5_get_dt_channel_data(adc_tm, channels, child);
+		if (adc_tm->legacy_binding)
+			ret = adc_tm5_get_dt_legacy_channel_data(adc_tm, channels,
+						child, channels - adc_tm->channels);
+		else
+			ret = adc_tm5_get_dt_channel_data(adc_tm, channels, child);
 		if (ret) {
 			of_node_put(child);
 			return ret;
@@ -1037,6 +1132,7 @@ static int adc_tm5_probe(struct platform_device *pdev)
 	adc_tm->regmap = regmap;
 	adc_tm->dev = dev;
 	adc_tm->base = reg;
+	adc_tm->legacy_binding = of_device_is_compatible(node, "qcom,adc-tm7");
 
 	ret = adc_tm5_get_dt_data(adc_tm, node);
 	if (ret) {
@@ -1128,6 +1224,10 @@ static const struct of_device_id adc_tm5_match_table[] = {
 	{
 		.compatible = "qcom,spmi-adc-tm5-iio",
 		.data = &adc_tm5_data_pmic,
+	},
+	{
+		.compatible = "qcom,adc-tm7",
+		.data = &adc_tm5_gen2_data_pmic,
 	},
 	{ }
 };
