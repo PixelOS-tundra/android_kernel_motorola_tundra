@@ -269,9 +269,19 @@ static void do_kernel_restart_prepare(void)
  */
 void kernel_restart(char *cmd)
 {
-	/* DEBUG (k61.stop=init/init2): no reboots from userspace */
-	if (k61_stop_init)
+	/*
+	 * DEBUG (k61.stop=init/init2): no reboots from userspace, except
+	 * "adb reboot bootloader" under k61.data=ckpt, so the next test
+	 * kernel can be booted straight away. The checkpoint stays pending
+	 * and drops this boot's /data writes as a guard trip would.
+	 */
+	if (k61_stop_init && k61_stop_data_ckpt && cmd &&
+	    !strcmp(cmd, "bootloader")) {
+		WRITE_ONCE(k61_stop_data_closed, true);
+		pr_emerg("k61.stop: userdata writes closed, restarting to the bootloader\n");
+	} else if (k61_stop_init) {
 		k61_stop_guard_trip("refusing restart (%s)", cmd ?: "");
+	}
 	kernel_restart_prepare(cmd);
 	do_kernel_restart_prepare();
 	migrate_to_reboot_cpu();
