@@ -921,6 +921,15 @@ config SM_GPUCC_LAHAINA
 	  Lahaina (SM8350) devices.
 	  Say Y if you want to support graphics controller devices.
 
+config SM_VIDEOCC_LAHAINA
+	tristate "Lahaina Video Clock Controller"
+	select SM_GCC_LAHAINA
+	help
+	  Support for the video clock controller on Qualcomm Technologies, Inc
+	  Lahaina (SM8350) devices.
+	  Say Y if you want to support video devices and functionality such as
+	  video encode/decode.
+
 config SM_DISPCC_LAHAINA
 	tristate "Lahaina Display Clock Controller"
 	select SM_GCC_LAHAINA
