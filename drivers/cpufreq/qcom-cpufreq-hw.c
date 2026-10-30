@@ -603,6 +603,8 @@ static const struct qcom_cpufreq_soc_data rimps_pdmem_soc_data = {
 static const struct of_device_id qcom_cpufreq_hw_match[] = {
 	{ .compatible = "qcom,cpufreq-hw", .data = &qcom_soc_data },
 	{ .compatible = "qcom,cpufreq-epss", .data = &epss_soc_data },
+	/* lahaina 5.4 binding: same EPSS register layout */
+	{ .compatible = "qcom,cpufreq-hw-epss", .data = &epss_soc_data },
 	{ .compatible = "qcom,cpufreq-epss-pdmem", .data = &epss_pdmem_soc_data },
 	{ .compatible = "qcom,cpufreq-rimps", .data = &rimps_soc_data },
 	{ .compatible = "qcom,cpufreq-rimps-pdmem", .data = &rimps_pdmem_soc_data },
@@ -778,7 +780,8 @@ static int qcom_cpufreq_hw_cpu_init(struct cpufreq_policy *policy)
 	base = data->base;
 
 	/* HW should be in enabled state to proceed */
-	if (!(readl_relaxed(base + data->soc_data->reg_enable) & 0x1)) {
+	if (!of_property_read_bool(dev->of_node, "qcom,skip-enable-check") &&
+	    !(readl_relaxed(base + data->soc_data->reg_enable) & 0x1)) {
 		dev_err(dev, "Domain-%d cpufreq hardware not enabled\n", index);
 		ret = -ENODEV;
 		goto error;
@@ -921,12 +924,16 @@ static int qcom_cpufreq_hw_driver_probe(struct platform_device *pdev)
 		spin_lock_init(&qcom_cpufreq_counter[cpu].lock);
 
 	ret = cpufreq_register_driver(&cpufreq_qcom_hw_driver);
-	if (ret)
+	if (ret) {
 		dev_err(&pdev->dev, "CPUFreq HW driver failed to register\n");
-	else
-		dev_dbg(&pdev->dev, "QCOM CPUFreq HW driver initialized\n");
+		return ret;
+	}
 
-	return ret;
+	/* 5.4 binding: cooling devices and limits live in child nodes */
+	of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev);
+	dev_dbg(&pdev->dev, "QCOM CPUFreq HW driver initialized\n");
+
+	return 0;
 }
 
 static int qcom_cpufreq_hw_driver_remove(struct platform_device *pdev)
