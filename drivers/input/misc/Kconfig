@@ -206,6 +206,14 @@ config INPUT_QCOM_HV_HAPTICS
 	  for playing different vibration effects. To compile this driver as a module,
 	  choose M here: the module will be called qcom-hv-haptics.
 
+config HAPTIC_POWER_ON
+	bool "Calibrate the LRA when qcom-hv-haptics probes"
+	depends on INPUT_QCOM_HV_HAPTICS
+	help
+	  Run the LRA calibration (frequency, impedance and auto brake) of the
+	  QTI high voltage haptics at the end of its probe, as the Motorola
+	  5.4 kernels did.
+
 config INPUT_SPARCSPKR
 	tristate "SPARC Speaker support"
 	depends on PCI && SPARC64
