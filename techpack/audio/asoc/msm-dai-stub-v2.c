@@ -31,7 +31,7 @@ struct msm_dai_stream_aif_name {
 static struct msm_dai_stream_aif_name msm_dai_stub_stream_aif_names[] = {
 	{"Stub Playback","STUB_RX"},
 	{"Stub Capture","STUB_TX"},
-	{"Stub1 Capture","STUB_DTMF_TX"},
+	{"Stub1 Capture","STUB_1_TX"},
 	{"DTMF TX","STUB_DTMF_TX"},
 	{"CS-VOICE HOST RX CAPTURE","STUB_HOST_RX_CAPTURE_TX"},
 	{"CS-VOICE HOST TX CAPTURE","STUB_HOST_TX_CAPTURE_TX"},

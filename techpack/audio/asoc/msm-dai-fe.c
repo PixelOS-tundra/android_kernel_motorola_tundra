@@ -77,6 +77,7 @@ static struct fe_dai_stream_aif_name fe_dai_stream_aif_names[] = {
 	{"CDC_DMA_HOSTLESS Playback",          "CDC_DMA_DL_HL"},
 	{"CDC_DMA_HOSTLESS Capture",           "CDC_DMA_UL_HL"},
 	{"TX3_CDC_DMA_HOSTLESS Capture",       "TX3_CDC_DMA_UL_HL"},
+	{"TX4_CDC_DMA_HOSTLESS Capture",       "TX4_CDC_DMA_UL_HL"},
 	{"INT_FM_HOSTLESS Playback",           "INTFM_DL_HL"},
 	{"INT_FM_HOSTLESS Capture",            "INTFM_UL_HL"},
 	{"INT_HFP_BT Hostless Playback",       "INTHFP_DL_HL"},
@@ -105,6 +106,8 @@ static struct fe_dai_stream_aif_name fe_dai_stream_aif_names[] = {
 	{"Tertiary MI2S_TX Hostless Capture",  "TERT_MI2S_UL_HL"},
 	{"Tertiary MI2S_RX Hostless Playback", "TERT_MI2S_DL_HL"},
 	{"Quaternary MI2S_TX Hostless Capture", "QUAT_MI2S_UL_HL"},
+	{"Senary MI2S_TX Hostless Capture",    "SEN_MI2S_UL_HL"},
+	{"Senary MI2S_RX Hostless Playback",   "SEN_MI2S_DL_HL"},
 	{"Quaternary MI2S_RX Hostless Playback","QUAT_MI2S_DL_HL"},
 	{"INT0 MI2S_RX Hostless Playback",      "INT0_MI2S_DL_HL"},
 	{"INT4 MI2S_RX Hostless Playback",      "INT4_MI2S_DL_HL"},
@@ -785,7 +788,6 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 	{
 		.capture = {
 			.stream_name = "TX4_CDC_DMA_HOSTLESS Capture",
-			.aif_name = "TX4_CDC_DMA_UL_HL",
 			.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |
 				SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 |
 				SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
@@ -1208,7 +1210,6 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 	{
 		.capture = {
 			.stream_name = "Senary MI2S_TX Hostless Capture",
-			.aif_name = "SEN_MI2S_UL_HL",
 			.rates = SNDRV_PCM_RATE_8000_48000,
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
 				    SNDRV_PCM_FMTBIT_S24_LE),
@@ -1224,7 +1225,6 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 	{
 		.playback = {
 			.stream_name = "Senary MI2S_RX Hostless Playback",
-			.aif_name = "SEN_MI2S_DL_HL",
 			.rates = SNDRV_PCM_RATE_8000_384000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE |
 				    SNDRV_PCM_FMTBIT_S24_LE,
