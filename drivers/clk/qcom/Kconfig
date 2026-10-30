@@ -930,6 +930,15 @@ config SM_DISPCC_LAHAINA
 	  Say Y if you want to support display devices and functionality such as
 	  splash screen.
 
+config SM_CAMCC_LAHAINA
+	tristate "Lahaina Camera Clock Controller"
+	select SM_GCC_LAHAINA
+	help
+	  Support for the camera clock controller on Qualcomm Technologies, Inc
+	  Lahaina (SM8350) devices.
+	  Say Y if you want to support camera devices and functionality such as
+	  capturing pictures.
+
 config SM_GCC_KALAMA
 	tristate "Kalama Global Clock Controller"
 	depends on COMMON_CLK_QCOM
