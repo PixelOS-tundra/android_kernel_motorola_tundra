@@ -9,6 +9,7 @@
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/fs.h>
+#include <linux/gpio.h>
 #include <linux/hrtimer.h>
 #include <linux/init.h>
 #include <linux/input.h>
@@ -20,6 +21,7 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
+#include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/driver.h>
@@ -628,6 +630,8 @@ struct haptics_chip {
 	struct mutex			vmax_lock;
 	struct work_struct		set_gain_work;
 	int				fifo_empty_irq;
+	int				haptic_gpio;
+	u32				long_gain_reduced;
 	u32				hpwr_voltage_mv;
 	u32				effects_count;
 	u32				primitives_count;
@@ -2234,6 +2238,22 @@ static int haptics_set_fifo(struct haptics_chip *chip, struct fifo_cfg *fifo)
 	return 0;
 }
 
+/*
+ * Cap the DIRECT_PLAY amplitude at long-gain-reduced while haptic-gpio
+ * reads high, i.e. while the phone lies flat.
+ */
+static u8 haptics_get_reduced_amplitude(struct haptics_chip *chip,
+		u8 amplitude)
+{
+	if (gpio_is_valid(chip->haptic_gpio) &&
+			gpio_get_value(chip->haptic_gpio) &&
+			amplitude > chip->long_gain_reduced)
+		amplitude = chip->long_gain_reduced;
+
+	dev_dbg(chip->dev, "DIRECT_PLAY amplitude: %#x\n", amplitude);
+	return amplitude;
+}
+
 static int haptics_load_constant_effect(struct haptics_chip *chip, u8 amplitude)
 {
 	struct haptics_play_info *play = &chip->play;
@@ -2272,6 +2292,7 @@ static int haptics_load_constant_effect(struct haptics_chip *chip, u8 amplitude)
 			goto unlock;
 	}
 
+	amplitude = haptics_get_reduced_amplitude(chip, amplitude);
 	rc = haptics_set_direct_play(chip, amplitude);
 	if (rc < 0)
 		goto unlock;
@@ -2868,6 +2889,7 @@ static void haptics_set_gain_work(struct work_struct *work)
 		amplitude *= gain;
 		amplitude /= 0x7fff;
 
+		amplitude = haptics_get_reduced_amplitude(chip, (u8)amplitude);
 		dev_dbg(chip->dev, "Set amplitude: %#x\n", amplitude);
 		haptics_set_direct_play(chip, (u8)amplitude);
 		mutex_unlock(&play->lock);
@@ -4031,6 +4053,13 @@ static int haptics_parse_dt(struct haptics_chip *chip)
 		rc = -EINVAL;
 		goto free_pbs;
 	}
+
+	chip->haptic_gpio = of_get_named_gpio(node, "haptic-gpio", 0);
+	chip->long_gain_reduced = DIRECT_PLAY_MAX_AMPLITUDE;
+	of_property_read_u32(node, "long-gain-reduced",
+			&chip->long_gain_reduced);
+	if (!chip->long_gain_reduced)
+		chip->long_gain_reduced = DIRECT_PLAY_MAX_AMPLITUDE;
 
 	config->fifo_empty_thresh = get_fifo_empty_threshold(chip);
 	of_property_read_u32(node, "qcom,fifo-empty-threshold",
