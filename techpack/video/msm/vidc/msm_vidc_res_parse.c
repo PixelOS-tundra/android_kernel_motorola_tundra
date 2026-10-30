@@ -1006,6 +1006,12 @@ static int msm_vidc_setup_context_bank(struct msm_vidc_platform_resources *res,
 	}
 
 	 cb->domain = iommu_get_domain_for_dev(cb->dev);
+	if (!cb->domain) {
+		d_vpr_e("%s: %s has no iommu domain\n", __func__,
+			dev_name(dev));
+		rc = -ENODEV;
+		goto remove_cb;
+	}
 
 	 /*
 	  * When memory is fragmented, best-fit IOVA allocation increases the
