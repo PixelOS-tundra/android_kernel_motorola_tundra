@@ -2697,8 +2697,10 @@ static int msm_compr_trigger(struct snd_soc_component *component,
 		prtd->bytes_received = 0;
 		prtd->bytes_sent = 0;
 		prtd->marker_timestamp = 0;
+#if !IS_ENABLED(CONFIG_AUDIO_QGKI)
 		// Reset zero_buffer to ensure correct calculations on next trigger start
 		prtd->zero_buffer = 0;
+#endif
 
 		atomic_set(&prtd->xrun, 0);
 		spin_unlock_irqrestore(&prtd->lock, flags);
@@ -3558,7 +3560,8 @@ static int msm_compr_get_metadata(struct snd_soc_component *component,
 
 
 #if IS_ENABLED(CONFIG_AUDIO_QGKI)
-static int msm_compr_set_next_track_param(struct snd_compr_stream *cstream,
+static int msm_compr_set_next_track_param(struct snd_soc_component *component,
+				struct snd_compr_stream *cstream,
 				union snd_codec_options *codec_options)
 {
 	struct msm_compr_audio *prtd;
@@ -5758,6 +5761,9 @@ static struct snd_compress_ops msm_compr_ops = {
 	.copy			= msm_compr_copy,
 	.get_caps		= msm_compr_get_caps,
 	.get_codec_caps		= msm_compr_get_codec_caps,
+#if IS_ENABLED(CONFIG_AUDIO_QGKI)
+	.set_next_track_param	= msm_compr_set_next_track_param,
+#endif
 };
 
 static struct snd_soc_component_driver msm_soc_component = {

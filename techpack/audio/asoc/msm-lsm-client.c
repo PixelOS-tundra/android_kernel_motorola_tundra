@@ -3,6 +3,7 @@
  * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
+#include <linux/compat.h>
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/module.h>
@@ -2073,8 +2074,9 @@ enum {
 };
 
 #if IS_ENABLED(CONFIG_AUDIO_QGKI)
-static int msm_lsm_ioctl_compat(struct snd_pcm_substream *substream,
-			  unsigned int cmd, void __user *arg)
+static int msm_lsm_ioctl_compat(struct snd_soc_component *component,
+				struct snd_pcm_substream *substream,
+				unsigned int cmd, void __user *arg)
 {
 	struct snd_pcm_runtime *runtime;
 	struct lsm_priv *prtd;
@@ -2082,7 +2084,7 @@ static int msm_lsm_ioctl_compat(struct snd_pcm_substream *substream,
 	int err = 0;
 	u32 size = 0;
 
-	if (PCM_RUNTIME_CHECK(substream))
+	if (!substream || !substream->runtime)
 		return -ENXIO;
 
 	if (!substream || !substream->private_data) {
@@ -5015,6 +5017,9 @@ static struct snd_soc_component_driver msm_soc_component = {
 	.open			= msm_lsm_open,
 	.close          	= msm_lsm_close,
 	.ioctl          	= msm_lsm_ioctl,
+#if IS_ENABLED(CONFIG_AUDIO_QGKI)
+	.compat_ioctl		= msm_lsm_ioctl_compat,
+#endif
 	.prepare		= msm_lsm_prepare,
 	.hw_params      	= msm_lsm_hw_params,
 	.copy_user      	= msm_lsm_pcm_copy,

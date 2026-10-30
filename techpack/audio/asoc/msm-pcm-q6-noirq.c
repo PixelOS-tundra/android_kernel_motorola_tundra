@@ -40,7 +40,9 @@ MODULE_IMPORT_NS(DMA_BUF);
 #define DRV_NAME "msm-pcm-q6-noirq"
 
 #define PCM_MASTER_VOL_MAX_STEPS	0x2000
+#ifndef SNDRV_HWDEP_IFACE_AUDIO_BE
 #define SNDRV_HWDEP_IFACE_AUDIO_BE	27   /* for lack of a FE iface */
+#endif
 static const DECLARE_TLV_DB_LINEAR(msm_pcm_vol_gain, 0,
 			PCM_MASTER_VOL_MAX_STEPS);
 
