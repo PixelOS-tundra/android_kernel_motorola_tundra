@@ -3421,8 +3421,9 @@ static int __init_resources(struct venus_hfi_device *device,
 
 	rc = __init_subcaches(device);
 	if (rc) {
-		/* no system cache (LLCC) is not fatal */
+		/* no system cache (LLCC) is not fatal: run without it */
 		d_vpr_e("Failed to init subcaches: %d\n", rc);
+		res->sys_cache_present = false;
 		rc = 0;
 	}
 
