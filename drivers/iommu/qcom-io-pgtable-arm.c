@@ -1238,10 +1238,12 @@ arm_64_lpae_alloc_pgtable_s1(struct io_pgtable_cfg *cfg, void *cookie)
 			tcr->irgn = ARM_LPAE_TCR_RGN_NC;
 		else
 			tcr->irgn = ARM_LPAE_TCR_RGN_WBWA;
+		/*
+		 * The walk is already outer write-back here; like 5.4, ignore
+		 * the LLC hints (qcom,iommu-pagetable = "LLC" on lahaina's
+		 * msm_vidc context banks) instead of failing the attach.
+		 */
 		tcr->orgn = ARM_LPAE_TCR_RGN_WBWA;
-		if (WARN_ON(cfg->quirks & (IO_PGTABLE_QUIRK_ARM_OUTER_WBWA |
-					   IO_PGTABLE_QUIRK_QCOM_USE_LLC_NWA)))
-			goto out_free_data;
 	} else {
 		tcr->sh = ARM_LPAE_TCR_SH_OS;
 		tcr->irgn = ARM_LPAE_TCR_RGN_NC;
