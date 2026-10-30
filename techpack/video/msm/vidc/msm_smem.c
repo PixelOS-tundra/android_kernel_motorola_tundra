@@ -5,6 +5,7 @@
 
 #include <linux/dma-buf.h>
 #include <linux/ion.h>
+#include <linux/qcom-dma-mapping.h>
 #include "msm_vidc.h"
 #include "msm_vidc_debug.h"
 #include "msm_vidc_resources.h"
@@ -70,7 +71,7 @@ static int msm_dma_get_device_address(struct dma_buf *dbuf, unsigned long align,
 		attach->dma_map_attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 		if (res->sys_cache_present)
 			attach->dma_map_attrs |=
-				DMA_ATTR_IOMMU_USE_UPSTREAM_HINT;
+				DMA_ATTR_SYS_CACHE;
 
 		table = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
 		if (IS_ERR_OR_NULL(table)) {
@@ -430,8 +431,10 @@ static int alloc_dma_mem(size_t size, u32 align, u32 flags,
 	}
 
 	if (map_kernel) {
+		struct iosys_map map;
+
 		dma_buf_begin_cpu_access(dbuf, DMA_BIDIRECTIONAL);
-		mem->kvaddr = dma_buf_vmap(dbuf);
+		mem->kvaddr = dma_buf_vmap(dbuf, &map) ? NULL : map.vaddr;
 		if (!mem->kvaddr) {
 			s_vpr_e(sid, "Failed to map shared mem in kernel\n");
 			rc = -EIO;
@@ -473,7 +476,9 @@ static int free_dma_mem(struct msm_smem *mem, u32 sid)
 	}
 
 	if (mem->kvaddr) {
-		dma_buf_vunmap(dbuf, mem->kvaddr);
+		struct iosys_map map = IOSYS_MAP_INIT_VADDR(mem->kvaddr);
+
+		dma_buf_vunmap(dbuf, &map);
 		mem->kvaddr = NULL;
 		dma_buf_end_cpu_access(dbuf, DMA_BIDIRECTIONAL);
 	}
@@ -614,71 +619,30 @@ struct context_bank_info *msm_smem_get_context_bank(u32 session_type,
 
 int msm_smem_memory_prefetch(struct msm_vidc_inst *inst)
 {
-	int i, rc = 0;
-	struct memory_regions *vidc_regions = NULL;
-	struct ion_prefetch_region ion_region[MEMORY_REGIONS_MAX];
-
+	/*
+	 * 5.4 asked the ION secure heap to prefill its pool for the session.
+	 * The 6.1 qcom secure heaps have no such call; they allocate on
+	 * demand.
+	 */
 	if (!inst) {
 		d_vpr_e("%s: invalid parameters\n", __func__);
 		return -EINVAL;
 	}
 
-	vidc_regions = &inst->regions;
-	if (vidc_regions->num_regions > MEMORY_REGIONS_MAX) {
-		s_vpr_e(inst->sid, "%s: invalid num_regions %d, max %d\n",
-			__func__, vidc_regions->num_regions,
-			MEMORY_REGIONS_MAX);
-		return -EINVAL;
-	}
-
-	memset(ion_region, 0, sizeof(ion_region));
-	for (i = 0; i < vidc_regions->num_regions; i++) {
-		ion_region[i].size = vidc_regions->region[i].size;
-		ion_region[i].vmid = vidc_regions->region[i].vmid;
-	}
-
-	rc = msm_ion_heap_prefetch(ION_SECURE_HEAP_ID, ion_region,
-		vidc_regions->num_regions);
-	if (rc)
-		s_vpr_e(inst->sid, "%s: prefetch failed, ret: %d\n",
-			__func__, rc);
-	else
-		s_vpr_l(inst->sid, "%s: prefetch succeeded\n", __func__);
-
-	return rc;
+	return 0;
 }
 
 int msm_smem_memory_drain(struct msm_vidc_inst *inst)
 {
-	int i, rc = 0;
-	struct memory_regions *vidc_regions = NULL;
-	struct ion_prefetch_region ion_region[MEMORY_REGIONS_MAX];
-
+	/*
+	 * 5.4 asked the ION secure heap to drain its pool for the session.
+	 * The 6.1 qcom secure heaps have no such call; they allocate on
+	 * demand.
+	 */
 	if (!inst) {
 		d_vpr_e("%s: invalid parameters\n", __func__);
 		return -EINVAL;
 	}
 
-	vidc_regions = &inst->regions;
-	if (vidc_regions->num_regions > MEMORY_REGIONS_MAX) {
-		s_vpr_e(inst->sid, "%s: invalid num_regions %d, max %d\n",
-			__func__, vidc_regions->num_regions,
-			MEMORY_REGIONS_MAX);
-		return -EINVAL;
-	}
-
-	memset(ion_region, 0, sizeof(ion_region));
-	for (i = 0; i < vidc_regions->num_regions; i++) {
-		ion_region[i].size = vidc_regions->region[i].size;
-		ion_region[i].vmid = vidc_regions->region[i].vmid;
-	}
-
-	rc = msm_ion_heap_drain(ION_SECURE_HEAP_ID, ion_region,
-		vidc_regions->num_regions);
-	if (rc)
-		s_vpr_e(inst->sid, "%s: drain failed, ret: %d\n", __func__, rc);
-	else
-		s_vpr_l(inst->sid, "%s: drain succeeded\n", __func__);
-
-	return rc;
+	return 0;
 }

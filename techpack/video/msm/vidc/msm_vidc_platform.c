@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/io.h>
+#include <soc/qcom/of_common.h>
 #include "msm_vidc_internal.h"
 #include "msm_vidc_debug.h"
 

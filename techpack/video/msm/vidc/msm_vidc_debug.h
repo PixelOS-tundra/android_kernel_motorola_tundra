@@ -19,7 +19,7 @@
 // void disable_irq_nosync(unsigned int irq);
 // void enable_irq(unsigned int irq);
 
-void do_gettimeofday(struct timeval *__ddl_tv);
+void do_gettimeofday(struct __kernel_old_timeval *__ddl_tv);
 
 #ifndef CONFIG_VIDEOBUF2_CORE
 int vb2_reqbufs(struct vb2_queue *q, struct v4l2_requestbuffers *req);
@@ -260,7 +260,7 @@ static inline void put_sid(u32 sid)
 static inline void tic(struct msm_vidc_inst *i, enum profiling_points p,
 				 char *b)
 {
-	struct timeval __ddl_tv = { 0 };
+	struct __kernel_old_timeval __ddl_tv = { 0 };
 
 	if (!i->debug.pdata[p].name[0])
 		memcpy(i->debug.pdata[p].name, b, 64);
@@ -275,7 +275,7 @@ static inline void tic(struct msm_vidc_inst *i, enum profiling_points p,
 
 static inline void toc(struct msm_vidc_inst *i, enum profiling_points p)
 {
-	struct timeval __ddl_tv = { 0 };
+	struct __kernel_old_timeval __ddl_tv = { 0 };
 
 	if ((msm_vidc_debug & VIDC_PERF) &&
 		!i->debug.pdata[p].sampling) {
