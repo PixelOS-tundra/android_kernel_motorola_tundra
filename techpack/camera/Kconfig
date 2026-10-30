@@ -9,6 +9,46 @@ config QTI_CAMERA_LAHAINA
 	  CDM, IFE/CSID, ICP, JPEG, sensor modules) into the kernel with the
 	  lahaina feature set from config/lahaina.mk.
 
+if QTI_CAMERA_LAHAINA
+
+config AF_NOISE_ELIMINATION
+	bool "For elimnating AF resonance noise"
+	default n
+	help
+	Enable it only for produts that suffering AF resonance noise.
+
+config CAMERA_VOLTAGE_COMPATIBLE
+	bool "For camera voltage compatible"
+	default n
+	help
+	Enable it only for produts that need voltage compatible.
+
+config CAM_SENSOR_PROBE_RETRY
+	bool "For sensor probe fail"
+	default n
+	help
+	Add retries for sensor id matching.
+
+config CAMERA_DISABLE_VSYNC_IRQ
+	bool "For cam disable vsync irq"
+	default n
+	help
+	Enable it to disable cam vsync irq.
+
+config CAM_DISTINGUISH_SENSOR_VERSION
+	bool "For distinguish sensor version"
+	default n
+	help
+	Add for distinguish sensor version.
+
+config CAM_CTLE_ENABLE
+	bool "For cam enable ctle"
+	default n
+	help
+	Enable it to slove signal interference.
+
+endif
+
 config SPECTRA_ISP
 	bool "enable camera ISP modele"
 	help

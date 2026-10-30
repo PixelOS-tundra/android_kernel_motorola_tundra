@@ -10,6 +10,9 @@
 #include "cam_flash_core.h"
 #include "cam_common_util.h"
 #include "camera_main.h"
+#ifdef CONFIG_CAMERA_FLASH_PWM
+#include "pm6125_flash_gpio.h"
+#endif
 #include "cam_compat.h"
 #include "cam_mem_mgr_api.h"
 
@@ -141,10 +144,17 @@ static int32_t cam_flash_driver_cmd(struct cam_flash_ctrl *fctrl,
 	}
 	case CAM_QUERY_CAP: {
 		struct cam_flash_query_cap_info flash_cap = {0};
-
+#ifdef CONFIG_CAMERA_FLASH_IIC_COMPATIBLE
+		uint32_t flash_iic_supplier[3];
+		uint32_t flashid=0;
+#endif
 		CAM_DBG(CAM_FLASH, "CAM_QUERY_CAP");
 		flash_cap.slot_info  = fctrl->soc_info.index;
 		flash_cap.flash_type = soc_private->flash_type;
+		CAM_DBG(CAM_FLASH, "dts flash_type is %d, it should same with camx&chi flash_type", soc_private->flash_type);
+#ifdef CONFIG_CAMERA_FLASH_PWM
+		CAM_DBG(CAM_FLASH, "get flash_enabel_gpio %d", soc_private->flash_gpio_enable);
+#endif
 		for (i = 0; i < fctrl->flash_num_sources; i++) {
 			flash_cap.max_current_flash[i] =
 				soc_private->flash_max_current[i];
@@ -155,7 +165,39 @@ static int32_t cam_flash_driver_cmd(struct cam_flash_ctrl *fctrl,
 		for (i = 0; i < fctrl->torch_num_sources; i++)
 			flash_cap.max_current_torch[i] =
 				soc_private->torch_max_current[i];
-
+#ifdef CONFIG_CAMERA_FLASH_IIC_COMPATIBLE
+		rc = of_property_read_u32_array(fctrl->of_node, "distinguish-flash-supplier",
+			flash_iic_supplier, 3);
+		if (!rc) {
+			CAM_DBG(CAM_FLASH, "Distinguish IIC Flash Supplier dev:0x%x addr:0x%x data:0x%x",
+				flash_iic_supplier[0],flash_iic_supplier[1],flash_iic_supplier[2]);
+			if (cam_flash_fill_vreg_setting(fctrl)){
+				CAM_ERR(CAM_FLASH, "Flash Fill Vreg Failed");
+				goto release_mutex;
+			}
+			if (cam_flash_fill_i2c_default_setting(fctrl, flash_iic_supplier[0])){
+				CAM_ERR(CAM_FLASH, "Failed Flash Fill I2C Setting rc =%d",rc);
+				goto release_mutex;
+			}
+			if (fctrl->func_tbl.power_ops(fctrl, true)){
+				CAM_ERR(CAM_FLASH, "Power Up Failed");
+				goto release_mutex;
+			}
+			rc = camera_io_dev_read(&(fctrl->io_master_info),
+				flash_iic_supplier[1],&flashid,
+				CAMERA_SENSOR_I2C_TYPE_BYTE,
+				CAMERA_SENSOR_I2C_TYPE_BYTE);
+			CAM_DBG(CAM_FLASH, "flashid=%d",flashid);
+			if ((!rc) && (flashid == flash_iic_supplier[2]))
+				flash_cap.flash_supplier = 1;
+			else
+				flash_cap.flash_supplier = 0;
+			if (fctrl->func_tbl.power_ops(fctrl, false)){
+				CAM_ERR(CAM_FLASH, "Power Down Failed");
+				goto release_mutex;
+			}
+		}
+#endif
 		if (copy_to_user(u64_to_user_ptr(cmd->handle),
 			&flash_cap, sizeof(struct cam_flash_query_cap_info))) {
 			CAM_ERR(CAM_FLASH, "Failed Copy to User");
@@ -445,6 +487,9 @@ static int cam_flash_component_bind(struct device *dev,
 	fctrl->soc_info.dev_name = pdev->name;
 
 	platform_set_drvdata(pdev, fctrl);
+#ifdef CONFIG_CAMERA_FLASH_PWM
+	dev_set_drvdata(&pdev->dev, fctrl);
+#endif
 
 	rc = cam_flash_get_dt_data(fctrl, &fctrl->soc_info);
 	if (rc) {
@@ -546,6 +591,9 @@ static int cam_flash_component_bind(struct device *dev,
 
 	fctrl->flash_state = CAM_FLASH_STATE_INIT;
 	CAM_DBG(CAM_FLASH, "Component bound successfully");
+#ifdef CONFIG_CAMERA_FLASH_PWM
+	pm6125_flash_control_create_device(&pdev->dev);
+#endif
 	return rc;
 
 free_cci_resource:
@@ -568,6 +616,10 @@ static void cam_flash_component_unbind(struct device *dev,
 	struct cam_flash_ctrl *fctrl;
 	struct platform_device *pdev = to_platform_device(dev);
 
+#ifdef CONFIG_CAMERA_FLASH_PWM
+	pm6125_flash_control_remove_device(&pdev->dev);
+#endif
+
 	fctrl = platform_get_drvdata(pdev);
 	if (!fctrl) {
 		CAM_ERR(CAM_FLASH, "Flash device is NULL");
@@ -580,6 +632,9 @@ static void cam_flash_component_unbind(struct device *dev,
 	cam_unregister_subdev(&(fctrl->v4l2_dev_str));
 	cam_flash_put_source_node_data(fctrl);
 	platform_set_drvdata(pdev, NULL);
+#ifdef CONFIG_CAMERA_FLASH_PWM
+	dev_set_drvdata(&pdev->dev, NULL);
+#endif
 	v4l2_set_subdevdata(&fctrl->v4l2_dev_str.sd, NULL);
 	CAM_MEM_FREE(fctrl);
 	fctrl = NULL;
