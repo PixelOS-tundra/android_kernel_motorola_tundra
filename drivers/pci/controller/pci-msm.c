@@ -9555,6 +9555,14 @@ static void msm_pcie_read_dt(struct msm_pcie_dev_t *pcie_dev, int rc_idx,
 
 	ret = of_property_read_string(of_node, "qcom,drv-name",
 				      &pcie_dev->drv_name);
+	/*
+	 * 5.4 binding: qcom,drv-supported without a name. DRV is hosted on
+	 * the ADSP there (5.4 registered its SSR notifier for "adsp").
+	 */
+	if (ret && of_property_read_bool(of_node, "qcom,drv-supported")) {
+		pcie_dev->drv_name = "adsp";
+		ret = 0;
+	}
 	if (!ret) {
 		pcie_dev->drv_supported = true;
 		ret = msm_pcie_setup_drv(pcie_dev, of_node);
