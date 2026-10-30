@@ -333,9 +333,32 @@ bool snd_soc_runtime_ignore_pmdown_time(struct snd_soc_pcm_runtime *rtd)
  *
  * Sets the substream runtime hardware parameters.
  */
+/* ASoC no host IO hardware */
+static const struct snd_pcm_hardware no_host_hardware = {
+	.info			= SNDRV_PCM_INFO_MMAP |
+				  SNDRV_PCM_INFO_MMAP_VALID |
+				  SNDRV_PCM_INFO_INTERLEAVED |
+				  SNDRV_PCM_INFO_PAUSE |
+				  SNDRV_PCM_INFO_RESUME,
+	.formats		= SNDRV_PCM_FMTBIT_S16_LE |
+				  SNDRV_PCM_FMTBIT_S32_LE,
+	.period_bytes_min	= PAGE_SIZE >> 2,
+	.period_bytes_max	= PAGE_SIZE >> 1,
+	.periods_min		= 2,
+	.periods_max		= 4,
+	/*
+	 * Increase the max buffer bytes as PAGE_SIZE bytes is
+	 * not enough to encompass all the scenarios sent by
+	 * userspapce.
+	 */
+	.buffer_bytes_max	= PAGE_SIZE * 4,
+};
+
 int snd_soc_set_runtime_hwparams(struct snd_pcm_substream *substream,
 	const struct snd_pcm_hardware *hw)
 {
+	if (!substream->runtime)
+		return 0;
 	substream->runtime->hw = *hw;
 
 	return 0;
@@ -791,6 +814,9 @@ static int __soc_pcm_open(struct snd_soc_pcm_runtime *rtd,
 
 	for_each_rtd_components(rtd, i, component)
 		pinctrl_pm_select_default_state(component->dev);
+
+	if (rtd->dai_link->no_host_mode == SND_SOC_DAI_LINK_NO_HOST)
+		snd_soc_set_runtime_hwparams(substream, &no_host_hardware);
 
 	ret = snd_soc_pcm_component_pm_runtime_get(rtd, substream);
 	if (ret < 0)
@@ -1328,6 +1354,16 @@ static struct snd_soc_pcm_runtime *dpcm_get_be(struct snd_soc_card *card,
 			dev_dbg(card->dev, "ASoC: try BE : %s\n",
 				w ? w->name : "(not set)");
 
+#ifdef CONFIG_AUDIO_QGKI
+			/*
+			 * A CPU DAI widget only selects the BE whose stream
+			 * name matches it, several BEs can share a CPU DAI.
+			 */
+			if (w && w == widget && i < be->dai_link->num_cpus &&
+			    !(be->dai_link->stream_name && w->sname &&
+			      !strcmp(be->dai_link->stream_name, w->sname)))
+				continue;
+#endif
 			if (w == widget)
 				return be;
 		}
@@ -2772,10 +2808,17 @@ static int soc_get_playback_capture(struct snd_soc_pcm_runtime *rtd,
 				}
 			}
 			if (!*playback) {
+#ifdef CONFIG_AUDIO_QGKI
+				/* 5.4 dropped the direction silently */
+				dev_dbg(rtd->card->dev,
+					"No CPU DAIs support playback for stream %s\n",
+					rtd->dai_link->stream_name);
+#else
 				dev_err(rtd->card->dev,
 					"No CPU DAIs support playback for stream %s\n",
 					rtd->dai_link->stream_name);
 				return -EINVAL;
+#endif
 			}
 		}
 		if (rtd->dai_link->dpcm_capture) {
@@ -2789,10 +2832,17 @@ static int soc_get_playback_capture(struct snd_soc_pcm_runtime *rtd,
 			}
 
 			if (!*capture) {
+#ifdef CONFIG_AUDIO_QGKI
+				/* 5.4 dropped the direction silently */
+				dev_dbg(rtd->card->dev,
+					"No CPU DAIs support capture for stream %s\n",
+					rtd->dai_link->stream_name);
+#else
 				dev_err(rtd->card->dev,
 					"No CPU DAIs support capture for stream %s\n",
 					rtd->dai_link->stream_name);
 				return -EINVAL;
+#endif
 			}
 		}
 	} else {
@@ -2942,6 +2992,10 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 
 		if (drv->ioctl)
 			rtd->ops.ioctl		= snd_soc_pcm_component_ioctl;
+#ifdef CONFIG_AUDIO_QGKI
+		if (drv->compat_ioctl)
+			rtd->ops.compat_ioctl	= snd_soc_pcm_component_compat_ioctl;
+#endif
 		if (drv->sync_stop)
 			rtd->ops.sync_stop	= snd_soc_pcm_component_sync_stop;
 		if (drv->copy_user)
@@ -2952,6 +3006,14 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 			rtd->ops.mmap		= snd_soc_pcm_component_mmap;
 		if (drv->ack)
 			rtd->ops.ack            = snd_soc_pcm_component_ack;
+	}
+
+	/* setup any hostless PCMs - i.e. no host IO is performed */
+	if (rtd->dai_link->no_host_mode) {
+		if (pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream)
+			pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream->hw_no_buffer = 1;
+		if (pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream)
+			pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream->hw_no_buffer = 1;
 	}
 
 	if (playback)

@@ -56,6 +56,10 @@ struct snd_pcm_ops {
 	int (*close)(struct snd_pcm_substream *substream);
 	int (*ioctl)(struct snd_pcm_substream * substream,
 		     unsigned int cmd, void *arg);
+#ifdef CONFIG_AUDIO_QGKI
+	int (*compat_ioctl)(struct snd_pcm_substream *substream,
+		     unsigned int cmd, void __user *arg);
+#endif
 	int (*hw_params)(struct snd_pcm_substream *substream,
 			 struct snd_pcm_hw_params *params);
 	int (*hw_free)(struct snd_pcm_substream *substream);
@@ -465,6 +469,7 @@ struct snd_pcm_substream {
 	const struct snd_pcm_ops *ops;
 	/* -- runtime information -- */
 	struct snd_pcm_runtime *runtime;
+	unsigned int hw_no_buffer: 1; /* substream may not have a buffer */
         /* -- timer section -- */
 	struct snd_timer *timer;		/* timer */
 	unsigned timer_running: 1;	/* time is running */
