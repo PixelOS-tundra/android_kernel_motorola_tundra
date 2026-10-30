@@ -20,6 +20,7 @@
 #include "cam_hw_mgr_intf.h"
 #include "cam_custom_hw_mgr_intf.h"
 #include "cam_node.h"
+#include "cam_cpas_api.h"
 #include "cam_debug_util.h"
 #include "cam_smmu_api.h"
 #include "camera_main.h"
