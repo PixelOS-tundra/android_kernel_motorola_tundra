@@ -97,6 +97,7 @@ obj-$(CONFIG_QTI_DISPLAY_LAHAINA) += techpack/display/
 obj-$(CONFIG_QTI_DATAIPA_LAHAINA) += techpack/dataipa/ techpack/datarmnet-ext/mem/
 obj-$(CONFIG_QTI_DATARMNET_LAHAINA) += techpack/datarmnet/core/
 obj-$(CONFIG_QTI_CAMERA_LAHAINA) += techpack/camera/
+obj-$(CONFIG_QTI_VIDEO_LAHAINA) += techpack/video/
 obj-$(CONFIG_SAMPLES)	+= samples/
 obj-$(CONFIG_NET)	+= net/
 obj-y			+= virt/

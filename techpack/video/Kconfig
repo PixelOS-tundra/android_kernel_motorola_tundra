@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config QTI_VIDEO_LAHAINA
+	bool "Qualcomm Technologies, Inc. lahaina video driver (msm_vidc)"
+	depends on ARCH_QCOM && VIDEO_DEV
+	select VIDEOBUF2_CORE
+	select VIDEOBUF2_V4L2
+	help
+	  Build the msm_vidc V4L2 driver for the iris2 video core on
+	  lahaina (SM8350) into the kernel, as on the 5.4 tundra kernel.
+	  The stock Codec2/OMX components need it for hardware video
+	  decoding and encoding.
