@@ -933,7 +933,7 @@ static void touchProcess(psx93XX_t this)
 	}
 }
 
-#define DSI_DISPALY_MAX_LEN 64
+#define DSI_DISPALY_MAX_LEN 128
 const char *get_dsi_display_name(void)
 {
 	const char *bootargs = NULL;
@@ -957,7 +957,8 @@ const char *get_dsi_display_name(void)
 		end = strpbrk(idx, " ");
 		idx = strpbrk(idx, "=");
 		if (idx && end > idx)
-			strlcpy(display, idx + 1, end - idx);
+			strlcpy(display, idx + 1,
+				min_t(size_t, end - idx, sizeof(display)));
 	}
 
 	return display;
