@@ -174,6 +174,7 @@ obj-$(CONFIG_MSM_CLK_AOP_QMP) += clk-aop-qmp.o
 obj-$(CONFIG_SM_GCC_LAHAINA) += gcc-lahaina.o
 obj-$(CONFIG_SM_GPUCC_LAHAINA) += gpucc-lahaina.o
 obj-$(CONFIG_SM_DISPCC_LAHAINA) += dispcc-lahaina.o
+obj-$(CONFIG_SM_CAMCC_LAHAINA) += camcc-lahaina.o
 obj-$(CONFIG_SM_GCC_KALAMA) += gcc-kalama.o
 obj-$(CONFIG_SM_NPUCC_8150) += npucc-sm8150.o
 obj-$(CONFIG_SM_SCC_6150) += scc-sm6150.o
