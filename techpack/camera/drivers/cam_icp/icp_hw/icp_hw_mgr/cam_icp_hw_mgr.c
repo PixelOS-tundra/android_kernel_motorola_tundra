@@ -1101,6 +1101,15 @@ static bool cam_icp_update_bw_v2(struct cam_icp_hw_mgr *hw_mgr,
 	int i, path_index;
 	bool update_required = true;
 
+	if (clk_info->num_paths > CAM_ICP_MAX_PER_PATH_VOTES ||
+	    ctx_data->clk_info.num_paths > CAM_ICP_MAX_PER_PATH_VOTES) {
+		CAM_ERR(CAM_PERF,
+			"Invalid num_paths: req %u ctx %u, max %d, ctx_data %pK",
+			clk_info->num_paths, ctx_data->clk_info.num_paths,
+			CAM_ICP_MAX_PER_PATH_VOTES, ctx_data);
+		return false;
+	}
+
 	/*
 	 * If current request bandwidth is different from previous frames, then
 	 * recalculate bandwidth of all contexts of same hardware and update
