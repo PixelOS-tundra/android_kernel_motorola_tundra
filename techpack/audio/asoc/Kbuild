@@ -243,7 +243,6 @@ ifndef CONFIG_SND_SOC_SA410M
 	PLATFORM_OBJS += msm-pcm-q6-noirq.o
 endif
 	PLATFORM_OBJS += msm-pcm-q6-v2.o
-	PLATFORM_OBJS += msm-transcode-loopback-q6-v2.o
 	ifdef CONFIG_BOARD_AUTO_AUDIO
 		PLATFORM_OBJS += msm-pcm-routing-auto.o
 	else

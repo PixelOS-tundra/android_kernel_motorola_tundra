@@ -6,6 +6,9 @@
 #ifndef _COMPRESS_EXT
 #define _COMPRESS_EXT
 
+/* The tundra kernel carries the 5.4 Qualcomm compress UAPI already. */
+#ifndef SND_COMPR_AUDIO_INFO
+
 #define SNDRV_COMPRESS_RENDER_MODE_AUDIO_MASTER 0
 #define SNDRV_COMPRESS_RENDER_MODE_STC_MASTER 1
 
@@ -67,5 +70,7 @@ struct snd_codec_metadata {
 	__u64 timestamp;
 	__u32 reserved[4];
 };
+
+#endif /* SND_COMPR_AUDIO_INFO */
 
 #endif /* _COMPRESS_EXT */
