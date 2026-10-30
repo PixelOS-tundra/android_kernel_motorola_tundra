@@ -1163,7 +1163,7 @@ static int cam_ife_hw_mgr_release_hw_for_ctx(
 
 	/* clean up the callback function */
 	ife_ctx->common.cb_priv = NULL;
-	memset(ife_ctx->common.event_cb, 0, sizeof(ife_ctx->common.event_cb));
+	ife_ctx->common.event_cb = NULL;
 
 	CAM_DBG(CAM_ISP, "release context completed ctx id:%d",
 		ife_ctx->ctx_index);
