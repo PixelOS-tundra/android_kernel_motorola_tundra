@@ -325,7 +325,7 @@ static void apr_adsp_up(void)
 		#if (IS_ENABLED(CONFIG_BOOTMARKER_PROXY))
 			bootmarker_place_marker("M - ADSP Ready");
 		#else
-			dev_err(&pdev->dev, "M - ADSP Ready\n");
+			pr_info("M - ADSP Ready\n");
 		#endif
 		apr_set_q6_state(APR_SUBSYS_LOADED);
 
