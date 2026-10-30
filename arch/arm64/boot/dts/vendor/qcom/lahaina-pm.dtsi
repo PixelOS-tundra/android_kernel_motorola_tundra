@@ -154,3 +154,117 @@
 		mbox-names = "aop";
 	};
 };
+
+/*
+ * The same cluster states for PSCI OSI power domains (cpuidle-psci): the
+ * suspend params are the composite state IDs that lpm-levels builds above
+ * (CPU rail-pc 0x40000004 + affinity level 1 + cluster mode << 4).
+ */
+/ {
+	domain-idle-states {
+		CLUSTER_PWR_DN: cluster-sleep-0 {
+			compatible = "domain-idle-state";
+			idle-state-name = "l3-pc";
+			arm,psci-suspend-param = <0x41000044>;
+			entry-latency-us = <2752>;
+			exit-latency-us = <3048>;
+			min-residency-us = <6118>;
+		};
+
+		APSS_OFF: cluster-sleep-1 {
+			compatible = "domain-idle-state";
+			idle-state-name = "llcc-off";
+			arm,psci-suspend-param = <0x4100c344>;
+			entry-latency-us = <3263>;
+			exit-latency-us = <6562>;
+			min-residency-us = <9987>;
+		};
+	};
+};
+
+&{/soc/psci} {
+	CPU_PD0: cpu-pd0 {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+	};
+
+	CPU_PD1: cpu-pd1 {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+	};
+
+	CPU_PD2: cpu-pd2 {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+	};
+
+	CPU_PD3: cpu-pd3 {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+	};
+
+	CPU_PD4: cpu-pd4 {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+	};
+
+	CPU_PD5: cpu-pd5 {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+	};
+
+	CPU_PD6: cpu-pd6 {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+	};
+
+	CPU_PD7: cpu-pd7 {
+		#power-domain-cells = <0>;
+		power-domains = <&CLUSTER_PD>;
+	};
+
+	CLUSTER_PD: cluster-pd {
+		#power-domain-cells = <0>;
+		domain-idle-states = <&CLUSTER_PWR_DN &APSS_OFF>;
+	};
+};
+
+&CPU0 {
+	power-domains = <&CPU_PD0>;
+	power-domain-names = "psci";
+};
+
+&CPU1 {
+	power-domains = <&CPU_PD1>;
+	power-domain-names = "psci";
+};
+
+&CPU2 {
+	power-domains = <&CPU_PD2>;
+	power-domain-names = "psci";
+};
+
+&CPU3 {
+	power-domains = <&CPU_PD3>;
+	power-domain-names = "psci";
+};
+
+&CPU4 {
+	power-domains = <&CPU_PD4>;
+	power-domain-names = "psci";
+};
+
+&CPU5 {
+	power-domains = <&CPU_PD5>;
+	power-domain-names = "psci";
+};
+
+&CPU6 {
+	power-domains = <&CPU_PD6>;
+	power-domain-names = "psci";
+};
+
+&CPU7 {
+	power-domains = <&CPU_PD7>;
+	power-domain-names = "psci";
+};
