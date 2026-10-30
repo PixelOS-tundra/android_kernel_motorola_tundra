@@ -1,3 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config QTI_CAMERA_LAHAINA
+	bool "Qualcomm Spectra camera driver (techpack/camera) for lahaina"
+	depends on ARCH_QCOM && MEDIA_CONTROLLER && VIDEO_V4L2_SUBDEV_API
+	depends on QCOM_DMABUF_HEAPS && QCOM_IOMMU_UTIL
+	help
+	  Build the Qualcomm camera-kernel techpack (CRM, sync, SMMU, CPAS,
+	  CDM, IFE/CSID, ICP, JPEG, sensor modules) into the kernel with the
+	  lahaina feature set from config/lahaina.mk.
+
 config SPECTRA_ISP
 	bool "enable camera ISP modele"
 	help
