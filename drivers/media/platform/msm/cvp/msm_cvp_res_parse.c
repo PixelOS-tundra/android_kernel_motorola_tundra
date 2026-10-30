@@ -789,8 +789,9 @@ int cvp_read_platform_resources_from_dt(
 	res->register_base = kres ? kres->start : -1;
 	res->register_size = kres ? (kres->end + 1 - kres->start) : -1;
 
-	kres = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	res->irq = kres ? kres->start : -1;
+	/* 6.1 OF devices have no static IRQ resources */
+	rc = platform_get_irq(pdev, 0);
+	res->irq = rc < 0 ? -1 : rc;
 
 	rc = msm_cvp_load_fw_name(res);
 	dprintk(CVP_CORE, "EVA fw: %s found.\n", res->fw_name);
