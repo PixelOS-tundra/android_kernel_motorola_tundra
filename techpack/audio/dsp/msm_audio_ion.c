@@ -234,7 +234,9 @@ static int msm_audio_dma_buf_unmap(void *handle, bool cma_mem)
 		alloc_data = list_entry(ptr, struct msm_audio_alloc_data, list);
 		if (alloc_data->type == MSM_AUDIO_MEM_TYPE_ION) {
 			if (alloc_data->handle == handle) {
-				rc = msm_audio_ion_unmap_kernel(
+				/* imported CMA buffers have no kernel mapping */
+				if (alloc_data->vaddr)
+					rc = msm_audio_ion_unmap_kernel(
 							alloc_data->vaddr,
 							handle, cma_mem);
 			if (rc) {
@@ -705,7 +707,10 @@ int msm_audio_ion_import_cma(void  **handle, int fd,
 		}
 	}
 
-	msm_audio_dma_buf_map(*handle, paddr, (dma_addr_t *) plen, &bufsz);
+	/* As 5.4: attach and map it, it is freed as an ION buffer */
+	rc = msm_audio_ion_dma_buf_map(*handle, paddr, plen, true);
+	if (rc)
+		goto err_ion_flag;
 
 	return 0;
 
