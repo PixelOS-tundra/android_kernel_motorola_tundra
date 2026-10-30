@@ -608,6 +608,14 @@ config LEDS_QTI_FLASH
 	  channels. It also supports various over current and over
 	  temperature mitigation features.
 
+config MULTI_CAM_FLASH_STATUS
+	bool "Re-strobe enabled QTI flash LED switches"
+	depends on LEDS_QTI_FLASH
+	help
+	  Apply a QTI flash LED switch state again even when the switch is
+	  already in it. With several cameras open the flash goes dark
+	  otherwise. Motorola enabled this for lahaina devices.
+
 	  To compile this driver as a module, choose M here: the
 	  module will be called leds-qti-flash.
 
