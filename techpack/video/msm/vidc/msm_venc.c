@@ -237,7 +237,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.name = "Video Bitrate Control",
 		.type = V4L2_CTRL_TYPE_MENU,
 		.minimum = V4L2_MPEG_VIDEO_BITRATE_MODE_VBR,
-		.maximum = V4L2_MPEG_VIDEO_BITRATE_MODE_CQ,
+		.maximum = V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ,
 		.default_value = V4L2_MPEG_VIDEO_BITRATE_MODE_VBR,
 		.menu_skip_mask = ~(
 		(1 << V4L2_MPEG_VIDEO_BITRATE_MODE_VBR) |
@@ -245,7 +245,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		(1 << V4L2_MPEG_VIDEO_BITRATE_MODE_MBR) |
 		(1 << V4L2_MPEG_VIDEO_BITRATE_MODE_CBR_VFR) |
 		(1 << V4L2_MPEG_VIDEO_BITRATE_MODE_MBR_VFR) |
-		(1 << V4L2_MPEG_VIDEO_BITRATE_MODE_CQ)
+		(1 << V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ)
 		),
 		.qmenu = mpeg_video_rate_control,
 	},
@@ -1553,7 +1553,7 @@ static int msm_venc_resolve_rate_control(struct msm_vidc_inst *inst,
 		return -EINVAL;
 	}
 
-	if ((ctrl->val == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ) &&
+	if ((ctrl->val == V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ) &&
 		get_v4l2_codec(inst) != V4L2_PIX_FMT_HEVC) {
 		s_vpr_e(inst->sid, "CQ supported only for HEVC\n");
 		return -EINVAL;
@@ -2677,7 +2677,7 @@ int msm_venc_set_rate_control(struct msm_vidc_inst *inst)
 	case V4L2_MPEG_VIDEO_BITRATE_MODE_CBR_VFR:
 		hfi_rc = HFI_RATE_CONTROL_CBR_VFR;
 		break;
-	case V4L2_MPEG_VIDEO_BITRATE_MODE_CQ:
+	case V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ:
 		hfi_rc = HFI_RATE_CONTROL_CQ;
 		break;
 	default:
@@ -2815,7 +2815,7 @@ int msm_venc_set_bitrate(struct msm_vidc_inst *inst)
 	}
 	hdev = inst->core->device;
 
-	if (inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ)
+	if (inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ)
 		return 0;
 
 	if (inst->layer_bitrate) {
@@ -3138,7 +3138,7 @@ int msm_venc_set_frame_quality(struct msm_vidc_inst *inst)
 	}
 	hdev = inst->core->device;
 
-	if (inst->rc_type != V4L2_MPEG_VIDEO_BITRATE_MODE_CQ)
+	if (inst->rc_type != V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ)
 		return 0;
 
 	ctrl = get_ctrl(inst, V4L2_CID_MPEG_VIDC_COMPRESSION_QUALITY);
@@ -3168,7 +3168,7 @@ int msm_venc_set_image_grid(struct msm_vidc_inst *inst)
 	}
 	hdev = inst->core->device;
 
-	if (inst->rc_type != V4L2_MPEG_VIDEO_BITRATE_MODE_CQ)
+	if (inst->rc_type != V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ)
 		return 0;
 
 	ctrl = get_ctrl(inst, V4L2_CID_MPEG_VIDC_IMG_GRID_SIZE);
@@ -3202,7 +3202,7 @@ int msm_venc_set_image_properties(struct msm_vidc_inst *inst)
 	if (!is_image_session(inst) && !is_grid_session(inst))
 		return 0;
 
-	if (inst->rc_type != V4L2_MPEG_VIDEO_BITRATE_MODE_CQ) {
+	if (inst->rc_type != V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ) {
 		d_vpr_e("%s: invalid rate control mode\n", __func__);
 		return -EINVAL;
 	}
@@ -4771,7 +4771,7 @@ int handle_all_intra_restrictions(struct msm_vidc_inst *inst)
 		return -EINVAL;
 	}
 
-	if (inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ)
+	if (inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ)
 		return 0;
 
 	ctrl = get_ctrl(inst, V4L2_CID_MPEG_VIDEO_GOP_SIZE);

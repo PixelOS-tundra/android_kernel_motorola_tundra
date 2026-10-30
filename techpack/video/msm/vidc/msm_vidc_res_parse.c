@@ -4,7 +4,6 @@
  */
 
 #include <linux/iommu.h>
-#include <linux/dma-iommu.h>
 #include <linux/of.h>
 #include <linux/sort.h>
 #include "msm_vidc_debug.h"
@@ -1008,10 +1007,10 @@ static int msm_vidc_setup_context_bank(struct msm_vidc_platform_resources *res,
 	 cb->domain = iommu_get_domain_for_dev(cb->dev);
 
 	 /*
-	  * When memory is fragmented, below configuration increases the
-	  * possibility to get a mapping for buffer in the configured CB.
+	  * When memory is fragmented, best-fit IOVA allocation increases the
+	  * possibility to get a mapping for buffer in the configured CB. On
+	  * 6.1 qcom-iommu-util selects it when the IOVA domain is created.
 	  */
-	iommu_dma_enable_best_fit_algo(cb->dev);
 
 	 /*
 	 * configure device segment size and segment boundary to ensure
@@ -1021,8 +1020,8 @@ static int msm_vidc_setup_context_bank(struct msm_vidc_platform_resources *res,
 	if (!dev->dma_parms)
 		dev->dma_parms =
 			devm_kzalloc(dev, sizeof(*dev->dma_parms), GFP_KERNEL);
-	dma_set_max_seg_size(dev, DMA_BIT_MASK(32));
-	dma_set_seg_boundary(dev, (unsigned long)DMA_BIT_MASK(64));
+	dma_set_max_seg_size(dev, UINT_MAX);
+	dma_set_seg_boundary(dev, ULONG_MAX);
 
 	d_vpr_h("Attached %s and created mapping\n", dev_name(dev));
 	d_vpr_h(

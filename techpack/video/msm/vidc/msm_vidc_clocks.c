@@ -1041,7 +1041,7 @@ int msm_dcvs_try_enable(struct msm_vidc_inst *inst)
 			inst->clk_data.low_latency_mode ||
 			inst->batch.enable ||
 			is_turbo_session(inst) ||
-			inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ ||
+			inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ ||
 			is_encode_batching(inst));
 
 	s_vpr_hp(inst->sid, "DCVS %s: %pK\n",
@@ -1285,7 +1285,7 @@ static int msm_vidc_decide_work_mode_ar50_lt(struct msm_vidc_inst *inst)
 				inst->rc_type ==
 					V4L2_MPEG_VIDEO_BITRATE_MODE_MBR_VFR ||
 				inst->rc_type ==
-					V4L2_MPEG_VIDEO_BITRATE_MODE_CQ) {
+					V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ) {
 			pdata.video_work_mode = HFI_WORKMODE_2;
 			latency.enable = false;
 		}
@@ -1501,7 +1501,7 @@ int msm_vidc_decide_core_and_power_mode_iris2(struct msm_vidc_inst *inst)
 	max_hq_mbps = inst->core->resources.max_hq_mbs_per_sec;
 
 	/* Power saving always disabled for CQ and LOSSLESS RC modes. */
-	if (inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ ||
+	if (inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ ||
 		inst->rc_type == RATE_CONTROL_LOSSLESS ||
 		(mbpf <= max_hq_mbpf && mbps <= max_hq_mbps))
 		enable = false;

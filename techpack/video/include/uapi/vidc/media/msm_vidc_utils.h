@@ -67,16 +67,24 @@
 /* Vendor events end */
 
 /* missing v4l2 entries start */
+/*
+ * The vendor ABI numbers these after CBR, so CQ is 5. Linux 6.1 added its
+ * own V4L2_MPEG_VIDEO_BITRATE_MODE_CQ = 2, hence the MSM_ prefix here.
+ */
 enum v4l2_mpeg_vidc_video_bitrate_mode {
 	V4L2_MPEG_VIDEO_BITRATE_MODE_CBR_VFR =
 		V4L2_MPEG_VIDEO_BITRATE_MODE_CBR + 1,
 	V4L2_MPEG_VIDEO_BITRATE_MODE_MBR,
 	V4L2_MPEG_VIDEO_BITRATE_MODE_MBR_VFR,
-	V4L2_MPEG_VIDEO_BITRATE_MODE_CQ,
+	V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ,
 };
 /* missing v4l2 entries end */
 
 /* vendor controls start */
+#ifndef V4L2_CTRL_CLASS_MPEG
+/* Linux 5.13 renamed the class to CODEC; same value */
+#define V4L2_CTRL_CLASS_MPEG V4L2_CTRL_CLASS_CODEC
+#endif
 #define V4L2_CID_MPEG_MSM_VIDC_BASE             (V4L2_CTRL_CLASS_MPEG | 0x2000)
 
 #define V4L2_MPEG_MSM_VIDC_DISABLE 0

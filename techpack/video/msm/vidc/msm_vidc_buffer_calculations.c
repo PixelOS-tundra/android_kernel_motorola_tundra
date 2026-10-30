@@ -1000,7 +1000,7 @@ u32 msm_vidc_calculate_enc_output_frame_size(struct msm_vidc_inst *inst)
 	mbs_per_frame = NUM_MBS_PER_FRAME(width, height);
 	frame_size = (width * height * 3);
 
-	if (inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_CQ ||
+	if (inst->rc_type == V4L2_MPEG_VIDEO_BITRATE_MODE_MSM_CQ ||
 		is_grid_session(inst) || is_image_session(inst))
 		goto calc_done;
 

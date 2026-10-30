@@ -6,6 +6,7 @@
 #define CREATE_TRACE_POINTS
 #define MAX_SSR_STRING_LEN 64
 #define MAX_DEBUG_LEVEL_STRING_LEN 15
+#include <soc/qcom/of_common.h>
 #include "msm_vidc_debug.h"
 #include "vidc_hfi_api.h"
 
@@ -218,15 +219,10 @@ struct dentry *msm_vidc_debugfs_init_drv(void)
 		goto failed_create_dir;
 	}
 
+/* debugfs_create_u32/bool() return nothing since 5.5 */
 #define __debugfs_create(__type, __name, __value) ({                          \
-	struct dentry *f = debugfs_create_##__type(__name, 0644,	\
-		dir, __value);                                                \
-	if (IS_ERR_OR_NULL(f)) {                                              \
-		d_vpr_e("Failed creating debugfs file '%pd/%s'\n",  \
-			dir, __name);                                         \
-		f = NULL;                                                     \
-	}                                                                     \
-	f;                                                                    \
+	debugfs_create_##__type(__name, 0644, dir, __value);                  \
+	true;                                                                 \
 })
 
 	ok =
@@ -685,7 +681,7 @@ inline void update_log_ctxt(u32 sid, u32 session_type, u32 fourcc)
 }
 
 /* Mock all the missing parts for successful compilation starts here */
-void do_gettimeofday(struct timeval *__ddl_tv)
+void do_gettimeofday(struct __kernel_old_timeval *__ddl_tv)
 {
 }
 

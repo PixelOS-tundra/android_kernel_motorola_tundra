@@ -3,6 +3,10 @@
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
+#include <linux/firmware.h>
+#include <linux/io.h>
+#include <linux/of_address.h>
+#include <linux/soc/qcom/mdt_loader.h>
 #include "hfi_common.h"
 
 #define FIRMWARE_SIZE			0X00A00000
@@ -2985,7 +2989,7 @@ static int __init_regs_and_interrupts(struct venus_hfi_device *device,
 
 	hal->irq = res->irq;
 	hal->firmware_base = res->firmware_base;
-	hal->register_base = devm_ioremap_nocache(&res->pdev->dev,
+	hal->register_base = devm_ioremap(&res->pdev->dev,
 			res->register_base, res->register_size);
 	hal->register_size = res->register_size;
 	if (!hal->register_base) {
@@ -3471,7 +3475,7 @@ static int __protect_cp_mem(struct venus_hfi_device *device)
 	}
 	mutex_unlock(&device->res->cb_lock);
 
-	rc = qcom_scm_mem_protect_video(memprot.cp_start, memprot.cp_size,
+	rc = qcom_scm_mem_protect_video_var(memprot.cp_start, memprot.cp_size,
 			memprot.cp_nonpixel_start, memprot.cp_nonpixel_size);
 
 	if (rc)
@@ -3941,6 +3945,115 @@ err_venus_power_on:
 	return rc;
 }
 
+/*
+ * 5.4 booted the firmware through the PIL node qcom,venus@aab0000
+ * (qcom,pil-tz-generic, qcom,pas-id 9, memory-region pil_video_mem) with
+ * subsystem_get_with_fwname(). 6.1 has no PIL framework, so load the mdt into
+ * that node's carveout and authenticate it with the PAS calls, as msm_cvp
+ * does for the EVA firmware.
+ */
+#define VENUS_PAS_ID	9
+
+static struct device_node *__venus_pil_node(void)
+{
+	struct device_node *np;
+	const char *name;
+
+	for_each_compatible_node(np, NULL, "qcom,pil-tz-generic") {
+		if (!of_property_read_string(np, "qcom,firmware-name", &name) &&
+		    !strcmp(name, "venus"))
+			return np;
+	}
+
+	return NULL;
+}
+
+static int __venus_mdt_load(struct venus_hfi_device *device)
+{
+	struct device *dev = &device->res->pdev->dev;
+	const struct firmware *fw = NULL;
+	struct device_node *np, *mem_np;
+	char fw_name[64];
+	struct resource res;
+	ssize_t fw_size;
+	u32 pas_id = VENUS_PAS_ID;
+	void *virt;
+	int rc;
+
+	np = __venus_pil_node();
+	if (!np) {
+		d_vpr_e("%s: no venus PIL node\n", __func__);
+		return -ENODEV;
+	}
+	of_property_read_u32(np, "qcom,pas-id", &pas_id);
+
+	mem_np = of_parse_phandle(np, "memory-region", 0);
+	of_node_put(np);
+	if (!mem_np) {
+		d_vpr_e("%s: no venus memory-region\n", __func__);
+		return -EINVAL;
+	}
+	rc = of_address_to_resource(mem_np, 0, &res);
+	of_node_put(mem_np);
+	if (rc) {
+		d_vpr_e("%s: venus memory-region: %d\n", __func__, rc);
+		return rc;
+	}
+
+	scnprintf(fw_name, sizeof(fw_name), "%s.mdt",
+		  device->res->fw_name ? device->res->fw_name : "venus");
+	rc = request_firmware(&fw, fw_name, dev);
+	if (rc) {
+		d_vpr_e("%s: request %s: %d\n", __func__, fw_name, rc);
+		return rc;
+	}
+
+	fw_size = qcom_mdt_get_size(fw);
+	if (fw_size < 0 || fw_size > resource_size(&res)) {
+		d_vpr_e("%s: %s size %zd, carveout %llu\n", __func__,
+			fw_name, fw_size, (u64)resource_size(&res));
+		rc = -EINVAL;
+		goto release_fw;
+	}
+
+	virt = memremap(res.start, resource_size(&res), MEMREMAP_WC);
+	if (!virt) {
+		rc = -ENOMEM;
+		goto release_fw;
+	}
+
+	rc = qcom_mdt_load(dev, fw, fw_name, pas_id, virt, res.start,
+			   resource_size(&res), NULL);
+	memunmap(virt);
+	if (rc) {
+		d_vpr_e("%s: load %s: %d\n", __func__, fw_name, rc);
+		goto release_fw;
+	}
+
+	rc = qcom_scm_pas_auth_and_reset(pas_id);
+	if (rc) {
+		d_vpr_e("%s: auth %s: %d\n", __func__, fw_name, rc);
+		goto release_fw;
+	}
+
+	device->resources.fw.pas_id = pas_id;
+	device->resources.fw.cookie = device;
+	d_vpr_h("%s: %s loaded\n", __func__, fw_name);
+
+release_fw:
+	release_firmware(fw);
+	return rc;
+}
+
+static void __venus_mdt_unload(struct venus_hfi_device *device)
+{
+	int rc;
+
+	rc = qcom_scm_pas_shutdown(device->resources.fw.pas_id);
+	if (rc)
+		d_vpr_e("%s: shutdown: %d\n", __func__, rc);
+}
+
 static int __load_fw(struct venus_hfi_device *device)
 {
 	int rc = 0;
@@ -3967,11 +4080,9 @@ static int __load_fw(struct venus_hfi_device *device)
 
 	if (!device->res->firmware_base) {
 		if (!device->resources.fw.cookie)
-			device->resources.fw.cookie =
-				subsystem_get_with_fwname("venus",
-				device->res->fw_name);
+			__venus_mdt_load(device);
 
-		if (IS_ERR_OR_NULL(device->resources.fw.cookie)) {
+		if (!device->resources.fw.cookie) {
 			d_vpr_e("Failed to download firmware\n");
 			device->resources.fw.cookie = NULL;
 			rc = -ENOMEM;
@@ -4001,7 +4112,7 @@ static int __load_fw(struct venus_hfi_device *device)
 	return rc;
 fail_protect_mem:
 	if (device->resources.fw.cookie)
-		subsystem_put(device->resources.fw.cookie);
+		__venus_mdt_unload(device);
 	device->resources.fw.cookie = NULL;
 fail_load_fw:
 	call_venus_op(device, power_off, device);
@@ -4022,7 +4133,7 @@ static void __unload_fw(struct venus_hfi_device *device)
 	if (device->state != VENUS_STATE_DEINIT)
 		flush_workqueue(device->venus_pm_workq);
 
-	subsystem_put(device->resources.fw.cookie);
+	__venus_mdt_unload(device);
 	__interface_queues_release(device);
 	call_venus_op(device, power_off, device);
 	device->resources.fw.cookie = NULL;
