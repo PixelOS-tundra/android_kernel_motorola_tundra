@@ -32,6 +32,16 @@ config MSM_MHI_NET_DEV
 	  with the MHI device driver to send and receive data to/from a
 	  host.
 
+config MSM_EXT_DISPLAY
+	bool "MSM External Display Driver"
+	depends on DRM && EXTCON
+	help
+	  Enabling this option adds MSM External Display Driver.
+	  External Display driver was added to support the communication
+	  between external display driver and its counterparts.
+	  This should be enabled to support audio & video over HDMI or
+	  DP for hot pluggable sink devices.
+
 source "techpack/dataipa/Kconfig"
 source "techpack/datarmnet/Kconfig"
 
