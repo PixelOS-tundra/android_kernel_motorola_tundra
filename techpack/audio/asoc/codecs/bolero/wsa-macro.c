@@ -786,6 +786,7 @@ static int wsa_macro_hw_params(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_STREAM_CAPTURE:
 		if (dai->id == WSA_MACRO_AIF_VI)
 			wsa_priv->pcm_rate_vi = params_rate(params);
+		fallthrough;
 	default:
 		break;
 	}

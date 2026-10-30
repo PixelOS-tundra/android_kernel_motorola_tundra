@@ -4063,10 +4063,10 @@ int aw_send_afe_cal_apr(uint32_t rx_port_id, uint32_t tx_port_id,
 		module_id = AFE_MODULE_ID_AWDSP_TX;
 	}
 
-	if (aw_cal->map_data.dma_buf == 0) {
+	if (aw_cal->map_data.mem_handle == NULL) {
 		/*Minimal chunk size is 4K*/
 		aw_cal->map_data.map_size = SZ_16K;
-		result = msm_audio_ion_alloc(&(aw_cal->map_data.dma_buf),
+		result = msm_audio_ion_alloc(&(aw_cal->map_data.mem_handle),
 				aw_cal->map_data.map_size,
 				&(aw_cal->cal_data.paddr),&len,
 				&(aw_cal->cal_data.kvaddr));
