@@ -456,8 +456,8 @@ int thermal_zone_device_is_enabled(struct thermal_zone_device *tz)
 	return tz->mode == THERMAL_DEVICE_ENABLED;
 }
 
-void thermal_zone_device_update(struct thermal_zone_device *tz,
-				enum thermal_notify_event event)
+static void thermal_zone_device_update_one(struct thermal_zone_device *tz,
+					   enum thermal_notify_event event)
 {
 	int count;
 
@@ -488,6 +488,17 @@ void thermal_zone_device_update(struct thermal_zone_device *tz,
 out:
 	mutex_unlock(&tz->lock);
 }
+
+void thermal_zone_device_update(struct thermal_zone_device *tz,
+				enum thermal_notify_event event)
+{
+	thermal_zone_device_update_one(tz, event);
+
+	/* A sensor event also concerns the other zones on that sensor */
+	if (tz->of_group)
+		thermal_of_group_update(tz, event,
+					thermal_zone_device_update_one);
+}
 EXPORT_SYMBOL_GPL(thermal_zone_device_update);
 
 static void thermal_zone_device_check(struct work_struct *work)
@@ -495,7 +506,7 @@ static void thermal_zone_device_check(struct work_struct *work)
 	struct thermal_zone_device *tz = container_of(work, struct
 						      thermal_zone_device,
 						      poll_queue.work);
-	thermal_zone_device_update(tz, THERMAL_EVENT_UNSPECIFIED);
+	thermal_zone_device_update_one(tz, THERMAL_EVENT_UNSPECIFIED);
 }
 
 int for_each_thermal_governor(int (*cb)(struct thermal_governor *, void *),
@@ -624,9 +635,23 @@ int thermal_zone_bind_cooling_device(struct thermal_zone_device *tz,
 	if (tz != pos1 || cdev != pos2)
 		return -EINVAL;
 
-	/* lower default 0, upper default max_state */
-	lower = lower == THERMAL_NO_LIMIT ? 0 : lower;
-	upper = upper == THERMAL_NO_LIMIT ? cdev->max_state : upper;
+	/*
+	 * QTI limits at or just below THERMAL_MAX_LIMIT are offsets from
+	 * max_state; THERMAL_NO_LIMIT is the default (0 or max_state).
+	 */
+	if (upper >= THERMAL_MAX_LIMIT - cdev->max_state) {
+		if (upper == THERMAL_NO_LIMIT)
+			upper = cdev->max_state;
+		else
+			upper = cdev->max_state - (THERMAL_MAX_LIMIT - upper);
+	}
+
+	if (lower >= THERMAL_MAX_LIMIT - cdev->max_state) {
+		if (lower == THERMAL_NO_LIMIT)
+			lower = 0;
+		else
+			lower = cdev->max_state - (THERMAL_MAX_LIMIT - lower);
+	}
 
 	if (lower > upper || upper > cdev->max_state)
 		return -EINVAL;

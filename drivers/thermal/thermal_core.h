@@ -141,6 +141,10 @@ int of_thermal_get_ntrips(struct thermal_zone_device *);
 bool of_thermal_is_trip_valid(struct thermal_zone_device *, int);
 const struct thermal_trip *
 of_thermal_get_trip_points(struct thermal_zone_device *);
+void thermal_of_group_update(struct thermal_zone_device *tz,
+			     enum thermal_notify_event event,
+			     void (*update)(struct thermal_zone_device *,
+					    enum thermal_notify_event));
 #else
 static inline int of_thermal_get_ntrips(struct thermal_zone_device *tz)
 {
@@ -155,6 +159,13 @@ static inline const struct thermal_trip *
 of_thermal_get_trip_points(struct thermal_zone_device *tz)
 {
 	return NULL;
+}
+static inline void
+thermal_of_group_update(struct thermal_zone_device *tz,
+			enum thermal_notify_event event,
+			void (*update)(struct thermal_zone_device *,
+				       enum thermal_notify_event))
+{
 }
 #endif
 
