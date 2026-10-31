@@ -10249,6 +10249,7 @@ static void k6x_regdump(struct msm_pcie_dev_t *d)
 
 int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 {
+	bool k61_l1sub = false;
 	struct pci_dev *root_pci_dev;
 	struct msm_pcie_dev_t *pcie_dev;
 	u32 cnt = 0;
@@ -10300,6 +10301,7 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 	 * or a DBI write there stalled the bus until the watchdog bit (cnss
 	 * DRV fast resume / speed restore after an aborted suspend).
 	 */
+	k61_l1sub = readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS) & BIT(8);
 	pr_info("k61dbg: prevent_l1: LTSSM 0x%x PM_STTS 0x%x, PARF PM_CTRL write\n",
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM),
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS));
@@ -10336,7 +10338,20 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 			goto err;
 		}
 
-		usleep_range(100, 105);
+		/*
+		 * DEBUG k61: from an L1 substate, busy-wait and print every poll
+		 * (does the stall need the CPU to sleep, and how far does the
+		 * L1.2 exit get?)
+		 */
+		if (k61_l1sub) {
+			pr_info("k61dbg: prevent_l1 poll %u: LTSSM 0x%x PM_STTS 0x%x STTS_1 0x%x\n",
+				cnt, readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM),
+				readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS),
+				readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS_1));
+			udelay(100);
+		} else {
+			usleep_range(100, 105);
+		}
 	}
 
 	pr_info("k61dbg: prevent_l1: L0 after %u polls, DBI LNKCTL write\n", cnt);
