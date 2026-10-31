@@ -11761,12 +11761,6 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 		if (clk_info->hdl && !clk_info->suppressible)
 			clk_disable_unprepare(clk_info->hdl);
 
-	/* enable L1ss sleep if client allows it */
-	if (!pcie_dev->l1ss_sleep_disable &&
-		!(options & MSM_PCIE_CONFIG_NO_L1SS_TO))
-		msm_pcie_drv_send_rpmsg(pcie_dev,
-					&drv_info->drv_enable_l1ss_sleep);
-
 	if (pcie_dev->pcie_sm)
 		ret = msm_pcie_icc_vote(pcie_dev, pcie_dev->current_link_speed,
 				pcie_dev->current_link_width, true);
@@ -11782,6 +11776,19 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 		regulator_disable(pcie_dev->gdsc_core);
 
 	msm_pcie_vreg_deinit(pcie_dev);
+
+	/*
+	 * Enable L1ss sleep if the client allows it, only after the APPS
+	 * votes (clocks, ICC, GDSC, regulators) are gone, as 5.4 does. Sent
+	 * before them, the DRV subsystem can already sleep the link while
+	 * APPS still holds its votes; a resume shortly after the hand-off
+	 * (suspend aborted by a wakeup) then found the link in L1 and the
+	 * first MHI access hung the bus (watchdog bite).
+	 */
+	if (!pcie_dev->l1ss_sleep_disable &&
+		!(options & MSM_PCIE_CONFIG_NO_L1SS_TO))
+		msm_pcie_drv_send_rpmsg(pcie_dev,
+					&drv_info->drv_enable_l1ss_sleep);
 
 	mutex_unlock(&pcie_dev->setup_lock);
 	mutex_unlock(&pcie_dev->recovery_lock);
