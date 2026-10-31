@@ -98,18 +98,7 @@ $(obj)/preinit/runner.elf: $(KSU_KERNEL_DIR)/preinit/runner/runner.c \
 	$(call if_changed,ksu_runner)
 
 targets += preinit/runner.elf
-
-# blob.o embeds runner.elf via .incbin. Give it an explicit recipe (mirroring
-# kbuild's own cmd_as_o_S) instead of relying on the implicit $(obj)/%.o: %.S
-# pattern rule: in the built-in path that merge does not fire for this
-# generated-dependency object, so blob.o was silently skipped and the final
-# ar failed with "preinit/blob.o: No such file or directory".
-quiet_cmd_ksu_blob = AS      $@
-      cmd_ksu_blob = $(CC) $(a_flags) -c -o $@ $<
-
-$(obj)/preinit/blob.o: $(KSU_KERNEL_DIR)/preinit/blob.S $(obj)/preinit/runner.elf FORCE
-	$(call if_changed_dep,ksu_blob)
-targets += preinit/blob.o
+$(obj)/preinit/blob.o: $(obj)/preinit/runner.elf
 $(info -- KernelSU: $(KSU_UAPI_INC): preinit enabled)
 asflags-y += -DKSU_PREINIT_RUNNER_BIN=\"$(obj)/preinit/runner.elf\"
 else
