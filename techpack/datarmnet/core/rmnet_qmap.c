@@ -25,9 +25,22 @@ static void *rmnet_port;
 static struct net_device *real_data_dev;
 static struct rmnet_ctl_client_if *rmnet_ctl;
 
+/* DEBUG k61: log every QMAP command on the control path (suspend aborts) */
+static void k61_qmap_log(const char *dir, struct sk_buff *skb, u8 ch)
+{
+	struct qmap_cmd_hdr *c = (struct qmap_cmd_hdr *)skb->data;
+
+	if (skb->len < sizeof(*c))
+		return;
+	pr_info("k61dbg: qmap %s ch %u cmd %u type %u mux %u len %u txid %u\n",
+		dir, ch, c->cmd_name, c->cmd_type, c->mux_id, skb->len,
+		ntohl(c->tx_id));
+}
+
 int rmnet_qmap_send(struct sk_buff *skb, u8 ch, bool flush)
 {
 	trace_dfc_qmap(skb->data, skb->len, false, ch);
+	k61_qmap_log("tx", skb, ch);
 
 	if (ch != RMNET_CH_CTL && real_data_dev) {
 		skb->protocol = htons(ETH_P_MAP);
@@ -57,6 +70,7 @@ static void rmnet_qmap_cmd_handler(struct sk_buff *skb)
 		return;
 
 	trace_dfc_qmap(skb->data, skb->len, true, RMNET_CH_CTL);
+	k61_qmap_log("rx", skb, RMNET_CH_CTL);
 
 	if (skb->len < sizeof(struct qmap_cmd_hdr))
 		goto free_skb;
