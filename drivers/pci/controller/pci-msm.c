@@ -10192,10 +10192,17 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 	if (pcie_dev->prevent_l1++)
 		goto out;
 
+	/*
+	 * Bring the link out of L1 with root port local accesses only (DBI
+	 * LNKCTL and PARF), as 5.4 does. The endpoint is only reached once
+	 * the link is in L0/L0s: right after a DRV resume the link can still
+	 * be in L1 and an endpoint config access there hung the bus until
+	 * the watchdog bit (cnss DRV fast resume after an aborted suspend).
+	 */
+	msm_pcie_write_mask(pcie_dev->dm_core +
+				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
+				PCI_EXP_LNKCTL_ASPM_L1, 0);
 	msm_pcie_write_mask(pcie_dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(5));
-
-	/* Disable L1 on EP and RP for LTSSM stability during link state poll */
-	msm_pcie_config_l1_disable_all(pcie_dev, pcie_dev->dev->bus);
 
 	/* confirm link is in L0/L0s */
 	while (!msm_pcie_check_ltssm_state(pcie_dev, MSM_PCIE_LTSSM_L0) &&
@@ -10228,6 +10235,9 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 
 		usleep_range(100, 105);
 	}
+
+	/* Disable L1 on EP and RP too, now that the link is in L0/L0s */
+	msm_pcie_config_l1_disable_all(pcie_dev, pcie_dev->dev->bus);
 
 	PCIE_DBG2(pcie_dev, "PCIe: RC%d: %02x:%02x.%01x: exit\n",
 		pcie_dev->rc_idx, pci_dev->bus->number,
