@@ -10206,19 +10206,15 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 		goto out;
 
 	/*
-	 * Bring the link out of L1 with root port local accesses only (DBI
-	 * LNKCTL and PARF), as 5.4 does. The endpoint is only reached once
-	 * the link is in L0/L0s: right after a DRV resume the link can still
-	 * be in L1 and an endpoint config access there hung the bus until
-	 * the watchdog bit (cnss DRV fast resume after an aborted suspend).
+	 * Bring the link out of L1 through PARF only and wait for L0/L0s
+	 * before any DBI or endpoint access: right after a DRV resume the
+	 * link can still be in an L1 substate, and an endpoint config access
+	 * or a DBI write there stalled the bus until the watchdog bit (cnss
+	 * DRV fast resume / speed restore after an aborted suspend).
 	 */
-	pr_info("k61dbg: prevent_l1: LTSSM 0x%x PM_STTS 0x%x, DBI LNKCTL write\n",
+	pr_info("k61dbg: prevent_l1: LTSSM 0x%x PM_STTS 0x%x, PARF PM_CTRL write\n",
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM),
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS));
-	msm_pcie_write_mask(pcie_dev->dm_core +
-				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
-				PCI_EXP_LNKCTL_ASPM_L1, 0);
-	pr_info("k61dbg: prevent_l1: PARF PM_CTRL write\n");
 	msm_pcie_write_mask(pcie_dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(5));
 	pr_info("k61dbg: prevent_l1: poll L0, LTSSM 0x%x\n",
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
@@ -10255,8 +10251,12 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 		usleep_range(100, 105);
 	}
 
-	pr_info("k61dbg: prevent_l1: L0 after %u polls, EP/RP L1 disable\n", cnt);
-	/* Disable L1 on EP and RP too, now that the link is in L0/L0s */
+	pr_info("k61dbg: prevent_l1: L0 after %u polls, DBI LNKCTL write\n", cnt);
+	/* the controller (DBI) and the EP are reachable now: disable L1 there */
+	msm_pcie_write_mask(pcie_dev->dm_core +
+				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
+				PCI_EXP_LNKCTL_ASPM_L1, 0);
+	pr_info("k61dbg: prevent_l1: EP/RP L1 disable\n");
 	msm_pcie_config_l1_disable_all(pcie_dev, pcie_dev->dev->bus);
 	pr_info("k61dbg: prevent_l1: done\n");
 
