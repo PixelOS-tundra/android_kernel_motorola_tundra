@@ -6609,7 +6609,7 @@ static int msm_pcie_enable_link(struct msm_pcie_dev_t *dev)
 				BIT(MSM_PCIE_INT_EVT_L1SUB_TIMEOUT) |
 				BIT(MSM_PCIE_INT_EVT_AER_LEGACY) |
 				BIT(MSM_PCIE_INT_EVT_AER_ERR) |
-				BIT(MSM_PCIE_INT_EVT_BRIDGE_FLUSH_N) |
+				/* TEST k61: masked as on 5.4 */
 				BIT(MSM_PCIE_INT_EVT_MSI_0) |
 				BIT(MSM_PCIE_INT_EVT_MSI_1) |
 				BIT(MSM_PCIE_INT_EVT_MSI_2) |
@@ -6702,9 +6702,18 @@ static int msm_pcie_enable_link(struct msm_pcie_dev_t *dev)
 	 * entirely. We can avoid setting this altogether, just to maintain backward compatibility
 	 * with older targets, set this bit only if it exists.
 	 */
-	if (dev->parf_ver < PARF_VER_WITH_NO_LANE_UPCONFIG_BIT)
-		msm_pcie_write_mask(dev->parf + PCIE20_PARF_CFG_BITS_3, 0, BIT(8));
-	msm_pcie_write_mask(dev->dm_core + PCIE20_LANE_SKEW_OFF, 0, BIT(5));
+	/*
+	 * TEST k61: 5.4 never enabled dynamic link width upconfigure on
+	 * lahaina (PARF CFG_BITS_3 0x68, LANE_SKEW_OFF 0). With it, the L1.2
+	 * exit after an aborted DRV suspend wedges the controller on the step
+	 * into Recovery (sysrun-58/59); the post-DRV PARF state is otherwise
+	 * identical to 5.4.
+	 */
+	if (0) {
+		if (dev->parf_ver < PARF_VER_WITH_NO_LANE_UPCONFIG_BIT)
+			msm_pcie_write_mask(dev->parf + PCIE20_PARF_CFG_BITS_3, 0, BIT(8));
+		msm_pcie_write_mask(dev->dm_core + PCIE20_LANE_SKEW_OFF, 0, BIT(5));
+	}
 
 	msm_pcie_write_mask(dev->dm_core + PCIE_GEN3_MISC_CONTROL, 1, BIT(0));
 	/* override the vendor id */
