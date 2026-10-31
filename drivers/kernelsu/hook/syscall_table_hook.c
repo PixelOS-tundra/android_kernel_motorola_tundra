@@ -9,6 +9,7 @@
 #include <linux/version.h>
 #include <linux/errno.h>
 #include <linux/fcntl.h>
+#include <linux/fs.h>
 #include <asm/ptrace.h>
 #include <asm/syscall.h>
 #if defined(__aarch64__)
@@ -140,12 +141,48 @@ static void ksu_sth_init_exec_tracker(const char __user *filename_user)
 	}
 }
 
+/*
+ * tundra: upstream's table scheme never calls ksu_handle_execveat_ksud(), which
+ * the kprobe and manual-hook schemes feed from execve. It is what notices
+ * init's second_stage exec (KSU SELinux rules + ksu cred setup) and the first
+ * zygote exec (on_post_fs_data(): allowlist, package observer, manager
+ * detection). Without it nothing past the init.rc injection runs until ksud
+ * exists, and the manager can't install ksud because it is never recognised.
+ * Mirrors ksu_execve_syscall_common() from the kprobe path.
+ */
+static void ksu_sth_execve_ksud(const char __user *filename_user,
+				const char __user *const __user *argv_user)
+{
+	struct user_arg_ptr argv = { .ptr.native = argv_user };
+	struct filename filename_in, *filename_p;
+	char path[32];
+	long ret;
+
+	if (likely(!READ_ONCE(ksu_execveat_hook)) || !filename_user)
+		return;
+
+	memset(path, 0, sizeof(path));
+	ret = strncpy_from_user(path,
+				(const char __user *)untagged_addr(
+					(unsigned long)filename_user),
+				sizeof(path) - 1);
+	if (ret < 0)
+		return;
+
+	filename_in.name = path;
+	filename_p = &filename_in;
+	ksu_handle_execveat_ksud(NULL, &filename_p, &argv, NULL, NULL);
+}
+
 #ifdef __NR_execve
 static long ksu_sth_execve(const struct pt_regs *regs)
 {
 	const char __user **filename_user =
 		(const char __user **)&PT_REGS_PARM1(regs);
 	long adb_ret = 0;
+
+	ksu_sth_execve_ksud(*filename_user,
+			    (const char __user *const __user *)PT_REGS_PARM2(regs));
 
 	if (current->pid != 1 && is_init(current_cred())) {
 		ksu_sth_init_exec_tracker(*filename_user);
@@ -170,6 +207,8 @@ static long ksu_sth_execveat(const struct pt_regs *regs)
 	// New bionic maps execve to execveat(AT_FDCWD, path, argv, envp, 0)
 	if ((int)PT_REGS_PARM1(regs) == AT_FDCWD &&
 	    (int)PT_REGS_SYSCALL_PARM4(regs) == 0) {
+		ksu_sth_execve_ksud(*filename_user,
+				    (const char __user *const __user *)PT_REGS_PARM3(regs));
 		if (current->pid != 1 && is_init(current_cred())) {
 			ksu_sth_init_exec_tracker(*filename_user);
 			adb_ret = ksu_adb_root_handle_execveat(
