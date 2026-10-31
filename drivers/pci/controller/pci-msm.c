@@ -10192,14 +10192,14 @@ static void k6x_tlmm95(const char *where)
 }
 
 
-/* TEST k61: clear GPIO 95's TLMM wake-enable bit, as 5.4's pinmux request did */
-static void k6x_tlmm95_wake_clear(void)
+/* TEST k61: set GPIO 95's TLMM wake-enable bit, as 5.4 has it (0xffff) */
+static void k6x_tlmm95_wake_set(void)
 {
 	void __iomem *w = ioremap(0x0f1cb010, 0x4);
 
 	if (!w)
 		return;
-	writel_relaxed(readl_relaxed(w) & ~BIT(15), w);
+	writel_relaxed(readl_relaxed(w) | BIT(15), w);
 	/* make sure it lands before the DRV hand-off */
 	readl_relaxed(w);
 	iounmap(w);
@@ -11936,14 +11936,14 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 		disable_irq(pcie_dev->irq[MSM_PCIE_INT_GLOBAL_INT].num);
 
 	/*
-	 * TEST k61: 5.4 runs DRV with the CLKREQ pin's TLMM wake forwarding
-	 * off (msm_pinmux_request() clears it when GPIO 95 is muxed to
-	 * pcie0_clkreqn); 6.1's pinctrl-msm leaves it at its reset value.
+	 * TEST k61: 5.4 runs DRV with the CLKREQ pin (GPIO 95) forwarded as a
+	 * TLMM wakeup (wake reg 0xF1CB010 reads 0xffff there, k54dbg), so the
+	 * DRV side sees CLKREQ# when the link has to leave L1.2.
 	 */
 	if (pcie_dev->rc_idx == 0) {
 		k6x_tlmm95("drv_suspend before");
-		k6x_tlmm95_wake_clear();
-		k6x_tlmm95("drv_suspend after clear");
+		k6x_tlmm95_wake_set();
+		k6x_tlmm95("drv_suspend after set");
 	}
 	ret = msm_pcie_drv_send_rpmsg(pcie_dev, &drv_info->drv_enable);
 	if (ret) {
