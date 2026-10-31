@@ -10174,37 +10174,6 @@ out:
 }
 EXPORT_SYMBOL(msm_pcie_allow_l1);
 
-/* DEBUG k6x: PCIe0 CLKREQ GPIO 95 TLMM state (DRV resume hang) */
-static void k6x_tlmm95(const char *where)
-{
-	void __iomem *g = ioremap(0x0f15f000, 0x10);
-	void __iomem *w = ioremap(0x0f1cb010, 0x4);
-
-	if (g && w)
-		pr_info("k6xtlmm: %s gpio95 ctl 0x%x io 0x%x intr_cfg 0x%x wake_reg 0x%x (bit15 %u)\n",
-			where, readl_relaxed(g), readl_relaxed(g + 4),
-			readl_relaxed(g + 8), readl_relaxed(w),
-			!!(readl_relaxed(w) & BIT(15)));
-	if (g)
-		iounmap(g);
-	if (w)
-		iounmap(w);
-}
-
-
-/* TEST k61: clear GPIO 95's TLMM wake-enable bit, as 5.4's pinmux request did */
-static void k6x_tlmm95_wake_clear(void)
-{
-	void __iomem *w = ioremap(0x0f1cb010, 0x4);
-
-	if (!w)
-		return;
-	writel_relaxed(readl_relaxed(w) & ~BIT(15), w);
-	/* make sure it lands before the DRV hand-off */
-	readl_relaxed(w);
-	iounmap(w);
-}
-
 /* DEBUG k6x: PHY readback vs the DT init sequence (DRV resume hang) */
 static void k6x_phycheck(struct msm_pcie_dev_t *d, const char *where)
 {
@@ -10276,7 +10245,6 @@ static void k6x_regdump(struct msm_pcie_dev_t *d)
 	}
 	pr_info("k6xdump: end\n");
 	k6x_phycheck(d, "L0");
-	k6x_tlmm95("L0");
 }
 
 int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
@@ -11856,7 +11824,6 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 	}
 
 	k6x_phycheck(pcie_dev, "after drv_disable");
-	k6x_tlmm95("after drv_disable");
 	k61_parf_watch(pcie_dev);
 
 	PCIE_DBG(pcie_dev, "read LINKCTRLSTATUS, LTSSM 0x%x\n", readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
@@ -11935,16 +11902,6 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 	if (!pcie_dev->pcie_sm)
 		disable_irq(pcie_dev->irq[MSM_PCIE_INT_GLOBAL_INT].num);
 
-	/*
-	 * TEST k61: 5.4 runs DRV with the CLKREQ pin's TLMM wake forwarding
-	 * off (msm_pinmux_request() clears it when GPIO 95 is muxed to
-	 * pcie0_clkreqn); 6.1's pinctrl-msm leaves it at its reset value.
-	 */
-	if (pcie_dev->rc_idx == 0) {
-		k6x_tlmm95("drv_suspend before");
-		k6x_tlmm95_wake_clear();
-		k6x_tlmm95("drv_suspend after clear");
-	}
 	ret = msm_pcie_drv_send_rpmsg(pcie_dev, &drv_info->drv_enable);
 	if (ret) {
 		ret = -EBUSY;
