@@ -11495,11 +11495,19 @@ out:
 	return ret;
 }
 
+static bool msm_pcie_ltssm_link_usable(u32 ltssm)
+{
+	ltssm &= MSM_PCIE_LTSSM_MASK;
+
+	return ltssm == MSM_PCIE_LTSSM_L0 || ltssm == MSM_PCIE_LTSSM_L0S ||
+	       ltssm == MSM_PCIE_LTSSM_L1_IDLE;
+}
+
 static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 {
 	struct msm_pcie_drv_info *drv_info = pcie_dev->drv_info;
 	struct msm_pcie_clk_info_t *clk_info;
-	u32 clkreq_override_en = 0;
+	u32 clkreq_override_en = 0, val = 0;
 	int ret, i, rpmsg_ret = 0;
 
 	mutex_lock(&pcie_dev->recovery_lock);
@@ -11661,10 +11669,27 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 	if (!pcie_dev->pcie_sm)
 		enable_irq(pcie_dev->irq[MSM_PCIE_INT_GLOBAL_INT].num);
 
+	/*
+	 * The link comes back from the DRV still retraining (Recovery.RcvrLock
+	 * right after drv_disable). An endpoint access before it is usable
+	 * again stalls the bus and the SoC is bitten by the watchdog, so wait
+	 * for L0, L0s or L1 before handing the link back to the client. If it
+	 * doesn't get there, fail the resume so the client takes its link-down
+	 * recovery path instead of touching the endpoint.
+	 */
+	ret = readl_poll_timeout(pcie_dev->parf + PCIE20_PARF_LTSSM, val,
+				 msm_pcie_ltssm_link_usable(val), 100,
+				 100 * USEC_PER_MSEC);
+	if (ret)
+		PCIE_ERR(pcie_dev,
+			 "PCIe: RC%d: DRV: link not usable after resume, LTSSM: %s\n",
+			 pcie_dev->rc_idx,
+			 TO_LTSSM_STR(val & MSM_PCIE_LTSSM_MASK));
+
 	mutex_unlock(&pcie_dev->setup_lock);
 	mutex_unlock(&pcie_dev->recovery_lock);
 
-	return 0;
+	return ret;
 
 out:
 	mutex_unlock(&pcie_dev->setup_lock);
