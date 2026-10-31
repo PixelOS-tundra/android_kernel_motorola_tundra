@@ -594,7 +594,9 @@ EXPORT_SYMBOL(mhi_set_m2_timeout_ms);
 
 int mhi_pm_fast_resume(struct mhi_controller *mhi_cntrl, bool notify_clients)
 {
+	struct mhi_event *mhi_event;
 	struct mhi_chan *itr, *tmp;
+	int i;
 	struct device *dev = &mhi_cntrl->mhi_dev->dev;
 	struct mhi_private *mhi_priv = dev_get_drvdata(dev);
 
@@ -672,9 +674,22 @@ int mhi_pm_fast_resume(struct mhi_controller *mhi_cntrl, bool notify_clients)
 			to_mhi_pm_state_str(mhi_cntrl->pm_state));
 	}
 
-	/* enable primary event ring processing and check for events */
+	/* enable primary event ring processing */
 	tasklet_enable(&mhi_cntrl->mhi_event->task);
-	mhi_irq_handler(0, mhi_cntrl->mhi_event);
+
+	/*
+	 * In the fast suspend/resume case the device doesn't know the host
+	 * went to suspend, so it may have raised MSIs while the host wasn't
+	 * taking them. Check every event ring, not just the primary one, as
+	 * the 5.4 MHI driver did: an event left on another ring makes the
+	 * QCA6490 fw wait for the host and assert after a DRV resume.
+	 */
+	mhi_event = mhi_cntrl->mhi_event;
+	for (i = 0; i < mhi_cntrl->total_ev_rings; i++, mhi_event++) {
+		if (mhi_event->offload_ev)
+			continue;
+		mhi_irq_handler(0, mhi_event);
+	}
 
 	return 0;
 }
