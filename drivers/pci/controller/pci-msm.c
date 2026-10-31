@@ -7604,6 +7604,7 @@ static void handle_sbr_func(struct work_struct *work)
 					handle_sbr_work);
 
 	PCIE_DBG(dev, "PCIe: SBR work for RC%d\n", dev->rc_idx);
+	pr_info("k61dbg: SBR work for RC%d\n", dev->rc_idx);
 
 	for (i = 0; i < MSM_PCIE_MAX_LINKDOWN_RESET; i++) {
 		reset_info = &dev->linkdown_reset[i];
@@ -7672,7 +7673,16 @@ static irqreturn_t handle_flush_irq(int irq, void *data)
 {
 	struct msm_pcie_dev_t *dev = data;
 
-	schedule_work(&dev->handle_sbr_work);
+	/*
+	 * TEST k61: 5.4 never unmasked BRIDGE_FLUSH_N. Its SBR work (LTSSM_EN
+	 * write, ELBI/DBI link checks from a kworker) may be what hits the
+	 * controller during the L1.2 exit after a DRV resume.
+	 */
+	pr_info("k61dbg: BRIDGE_FLUSH_N, SBR work skipped, LTSSM 0x%x PM_STTS 0x%x\n",
+		readl_relaxed(dev->parf + PCIE20_PARF_LTSSM),
+		readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS));
+	if (0)
+		schedule_work(&dev->handle_sbr_work);
 
 	return IRQ_HANDLED;
 }
@@ -8443,6 +8453,11 @@ static irqreturn_t handle_global_irq(int irq, void *data)
 
 	PCIE_DUMP(dev, "RC%d: Global IRQ %d received: 0x%x status2: 0x%x\n",
 		  dev->rc_idx, irq, status, status2);
+	/* DEBUG k61: global IRQ events (DRV resume hang) */
+	if (status || status2)
+		pr_info("k61dbg: global irq status 0x%x status2 0x%x LTSSM 0x%x\n",
+			status, status2,
+			readl_relaxed(dev->parf + PCIE20_PARF_LTSSM));
 
 	for (i = 0; i <= MSM_PCIE_INT_EVT_MAX; i++) {
 		if (status & BIT(i)) {
