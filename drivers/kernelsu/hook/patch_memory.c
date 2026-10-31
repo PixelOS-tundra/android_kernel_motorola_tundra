@@ -10,7 +10,8 @@
 
 // copy_to_kernel_nofault() was introduced in 5.8; before that it was
 // named probe_kernel_write()
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
+// (checked by Kbuild: some older trees, like tundra 5.4, backport it)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0) && !defined(KSU_HAS_COPY_TO_KERNEL_NOFAULT)
 #define copy_to_kernel_nofault(dst, src, size)                                 \
 	probe_kernel_write((dst), (src), (size))
 #endif
@@ -63,7 +64,7 @@ unsigned long phys_from_virt(unsigned long addr, int *err)
         goto fail;
     pr_debug("p4d of 0x%lx p=0x%lx v=0x%lx", addr, (uintptr_t)p4d,
              (uintptr_t)p4d_val(*p4d));
-#if defined(p4d_leaf)
+#if defined(p4d_leaf) && defined(__p4d_to_phys) // arm64 5.4 folds p4d: no __p4d_to_phys, p4d_leaf() is 0
     if (p4d_leaf(*p4d)) {
         pr_debug("Address 0x%lx maps to a P4D-level huge page\n", addr);
         return __p4d_to_phys(*p4d) + ((addr & ~P4D_MASK));

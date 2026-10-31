@@ -200,6 +200,10 @@ ccflags-y += -DKSU_COMPAT_HAS_BACKPORTED_CPUS_PTR
 endif
 
 # Handle optional backports
+ifeq ($(shell grep -q "copy_to_kernel_nofault" $(srctree)/include/linux/uaccess.h; echo $$?),0)
+ccflags-y += -DKSU_HAS_COPY_TO_KERNEL_NOFAULT
+endif
+
 ifeq ($(shell grep -q "strncpy_from_user_nofault" $(srctree)/include/linux/uaccess.h; echo $$?),0)
 ccflags-y += -DKSU_OPTIONAL_STRNCPY
 endif
