@@ -10174,6 +10174,37 @@ out:
 }
 EXPORT_SYMBOL(msm_pcie_allow_l1);
 
+/* DEBUG k6x: PHY readback vs the DT init sequence (DRV resume hang) */
+static void k6x_phycheck(struct msm_pcie_dev_t *d, const char *where)
+{
+	static unsigned int calls;
+	struct msm_pcie_phy_info_t *seq = d->phy_sequence;
+	u32 i, j, rb, bad = 0;
+	bool full = calls++ < 6;
+
+	if (!seq || d->rc_idx)
+		return;
+	pr_info("k6xphy: %s begin LTSSM 0x%x PM_STTS 0x%x\n", where,
+		readl_relaxed(d->parf + PCIE20_PARF_LTSSM),
+		readl_relaxed(d->parf + PCIE20_PARF_PM_STTS));
+	for (i = 0; i < d->phy_len; i++) {
+		/* only the last write of a register is its programmed value */
+		for (j = i + 1; j < d->phy_len; j++)
+			if (seq[j].offset == seq[i].offset)
+				break;
+		if (j < d->phy_len)
+			continue;
+		rb = readl_relaxed(d->phy + seq[i].offset);
+		if (rb != seq[i].val) {
+			bad++;
+			if (full)
+				pr_info("k6xphy: %s 0x%04x prog 0x%02x read 0x%02x\n",
+					where, seq[i].offset, seq[i].val, rb);
+		}
+	}
+	pr_info("k6xphy: %s end, %u of %u differ\n", where, bad, d->phy_len);
+}
+
 /* DEBUG k61: one-shot PCIe0 register dump in L0 (5.4 vs 6.1 diff) */
 static void k6x_dump_block(const char *name, void __iomem *base, u32 size)
 {
@@ -10213,6 +10244,7 @@ static void k6x_regdump(struct msm_pcie_dev_t *d)
 		iounmap(gcc);
 	}
 	pr_info("k6xdump: end\n");
+	k6x_phycheck(d, "L0");
 }
 
 int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
@@ -11791,6 +11823,7 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 		clear_bit(pcie_dev->rc_idx, &pcie_drv.rc_drv_enabled);
 	}
 
+	k6x_phycheck(pcie_dev, "after drv_disable");
 	k61_parf_watch(pcie_dev);
 
 	PCIE_DBG(pcie_dev, "read LINKCTRLSTATUS, LTSSM 0x%x\n", readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
