@@ -755,8 +755,11 @@ void dpm_resume_noirq(pm_message_t state)
 {
 	dpm_noirq_resume_devices(state);
 
+	pr_info("k61dbg: pm: noirq callbacks done, resuming irqs\n");
 	resume_device_irqs();
+	pr_info("k61dbg: pm: irqs resumed\n");
 	device_wakeup_disarm_wake_irqs();
+	pr_info("k61dbg: pm: wake irqs disarmed\n");
 }
 
 /**

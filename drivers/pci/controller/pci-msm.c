@@ -8232,6 +8232,8 @@ static irqreturn_t handle_wake_irq(int irq, void *data)
 	spin_lock_irqsave(&dev->irq_lock, irqsave_flags);
 
 	dev->wake_counter++;
+	pr_info("k61dbg: pcie wake irq rc%d link_status %d suspending %d\n",
+		dev->rc_idx, dev->link_status, dev->suspending);
 	PCIE_DBG(dev, "PCIe: No. %ld wake IRQ for RC%d\n",
 			dev->wake_counter, dev->rc_idx);
 
