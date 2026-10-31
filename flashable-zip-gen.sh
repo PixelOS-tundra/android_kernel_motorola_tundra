@@ -42,7 +42,7 @@ rm -rf "$STAGE/README.md" "$STAGE/modules" "$STAGE/patch" "$STAGE/ramdisk"
 cp "$SRC_DIR/anykernel/anykernel.sh" "$STAGE/anykernel.sh"
 cp "$IMAGE" "$STAGE/Image"
 
-ZIP_NAME="${ZIP_NAME:-tundra-5.4-$(git -C "$SRC_DIR" rev-parse --short=12 HEAD)-$(date -u +%Y%m%d-%H%M).zip}"
+ZIP_NAME="${ZIP_NAME:-torracat-tundra-5.4-$(git -C "$SRC_DIR" rev-parse --short=12 HEAD)-$(date -u +%Y%m%d-%H%M).zip}"
 ZIP="$KOUT/$ZIP_NAME"
 rm -f "$ZIP"
 (cd "$STAGE" && zip -qr9 "$ZIP" . -x '.git*')
