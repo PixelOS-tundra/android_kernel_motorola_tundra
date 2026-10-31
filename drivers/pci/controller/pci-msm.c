@@ -11534,6 +11534,48 @@ static bool msm_pcie_ltssm_link_usable(u32 ltssm)
 	       ltssm == MSM_PCIE_LTSSM_L1_IDLE;
 }
 
+/* DEBUG k61: PARF-only link state snapshot around the DRV hand-back */
+static void k61_parf_snap(struct msm_pcie_dev_t *d, const char *tag,
+			  u32 *lt, u32 *st)
+{
+	*lt = readl_relaxed(d->parf + PCIE20_PARF_LTSSM);
+	*st = readl_relaxed(d->parf + PCIE20_PARF_PM_STTS);
+	pr_info("k61dbg: %s: LTSSM 0x%x PM_STTS 0x%x STTS_1 0x%x PM_CTRL 0x%x CLKREQ_OVR 0x%x\n",
+		tag, *lt, *st,
+		readl_relaxed(d->parf + PCIE20_PARF_PM_STTS_1),
+		readl_relaxed(d->parf + PCIE20_PARF_PM_CTRL),
+		readl_relaxed(d->parf + PCIE20_PARF_CLKREQ_OVERRIDE));
+}
+
+/*
+ * DEBUG k61: after drv_disable, read PARF only (no writes) for up to 20 ms
+ * and print every change, to see whether the link leaves the L1 substate by
+ * itself and whether a read alone can stall.
+ */
+static void k61_parf_watch(struct msm_pcie_dev_t *d)
+{
+	u32 lt, st, plt, pst, i, l;
+	ktime_t t0 = ktime_get();
+
+	k61_parf_snap(d, "after drv_disable", &plt, &pst);
+	for (i = 0; i < 200; i++) {
+		lt = readl_relaxed(d->parf + PCIE20_PARF_LTSSM);
+		st = readl_relaxed(d->parf + PCIE20_PARF_PM_STTS);
+		l = lt & MSM_PCIE_LTSSM_MASK;
+		if (lt != plt || st != pst)
+			pr_info("k61dbg: watch +%lld us: LTSSM 0x%x PM_STTS 0x%x\n",
+				ktime_us_delta(ktime_get(), t0), lt, st);
+		plt = lt;
+		pst = st;
+		if (!(st & BIT(8)) && (l == MSM_PCIE_LTSSM_L0 ||
+				       l == MSM_PCIE_LTSSM_L0S))
+			break;
+		usleep_range(100, 105);
+	}
+	pr_info("k61dbg: watch end after %u polls, +%lld us: LTSSM 0x%x PM_STTS 0x%x\n",
+		i, ktime_us_delta(ktime_get(), t0), lt, st);
+}
+
 /* DEBUG k61: print the DRV resume/suspend steps (resume hang) */
 #pragma push_macro("PCIE_DBG")
 #undef PCIE_DBG
@@ -11668,6 +11710,11 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 
 	PCIE_DBG(pcie_dev, "PCIe: RC%d:turn on pipe clk, Done\n",
 		pcie_dev->rc_idx);
+	{
+		u32 k61lt, k61st;
+
+		k61_parf_snap(pcie_dev, "before drv_disable", &k61lt, &k61st);
+	}
 
 	if (clkreq_override_en) {
 		/* remove CLKREQ override */
@@ -11686,6 +11733,8 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 					&drv_info->drv_disable);
 		clear_bit(pcie_dev->rc_idx, &pcie_drv.rc_drv_enabled);
 	}
+
+	k61_parf_watch(pcie_dev);
 
 	PCIE_DBG(pcie_dev, "read LINKCTRLSTATUS, LTSSM 0x%x\n", readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
 	/* scale CX and rate change based on current GEN speed */
