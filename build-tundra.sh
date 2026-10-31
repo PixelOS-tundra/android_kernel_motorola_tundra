@@ -2,7 +2,8 @@
 # Standalone build for the tundra 5.4 kernel (branch: seventeen / seventeen-ksu).
 #
 # Sets up an AOSP Clang toolchain under $TC (default: $HOME/tc) and builds
-# Image.gz + dtbs with LLVM. Run on a Linux build host (the Mac checkout cannot
+# Image(.gz) + dtbs with LLVM, then an AnyKernel3 flashable zip (kernel only,
+# boot of the active slot). Run on a Linux build host (the Mac checkout cannot
 # build a kernel: case-insensitive FS, no Linux/ELF toolchain).
 #
 # The Clang version matches this tree's CONFIG_CC_VERSION_TEXT (AOSP clang
@@ -11,6 +12,8 @@
 # Usage:
 #   ./build-tundra.sh                 # build with defaults
 #   JOBS=48 ./build-tundra.sh         # override parallelism
+#   KOUT=/path/out ./build-tundra.sh  # override output dir (default: ./out)
+#   NO_ZIP=1 ./build-tundra.sh        # skip the AnyKernel3 flashable zip
 #   TC=/data/tc ./build-tundra.sh     # override toolchain dir
 #   CLANG_SRC=/path/to/clang-r596125 ./build-tundra.sh   # copy clang from here
 #   CLANG_URL=https://.../clang-r596125.tar.gz ./build-tundra.sh  # or download
@@ -21,11 +24,16 @@ TC="${TC:-$HOME/tc}"
 CLANG_VERSION="${CLANG_VERSION:-r596125}"            # matches CONFIG_CC_VERSION_TEXT
 CLANG_DIR="$TC/clang-$CLANG_VERSION"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 8)}"
-OUT="${OUT:-$PWD/out}"
+# Not $OUT: after `lunch` that is the ROM product dir (e.g. out/target/product/violet).
+KOUT="${KOUT:-$(cd "$(dirname "$0")" && pwd)/out}"
 DEFCONFIG="${DEFCONFIG:-tundra_defconfig}"
 # An already-present AOSP clang to copy from if $CLANG_DIR is empty.
 # The PixelOS build server keeps exactly this version here:
 CLANG_SRC="${CLANG_SRC:-$HOME/pos/prebuilts/clang/host/linux-x86/clang-$CLANG_VERSION}"
+# AnyKernel3 for the flashable zip (pinned; cached under $TC).
+AK3_URL="${AK3_URL:-https://github.com/osm0sis/AnyKernel3}"
+AK3_COMMIT="${AK3_COMMIT:-41f04bdb4ee30a44e429c2c1131d5e8bb32b15f1}"
+AK3_DIR="$TC/AnyKernel3"
 # Optional direct tarball URL (a clang-$CLANG_VERSION.tar.gz) if no local copy.
 CLANG_URL="${CLANG_URL:-}"
 
@@ -65,7 +73,7 @@ setup_clang
 export PATH="$CLANG_DIR/bin:$PATH"
 
 MAKE_ARGS=(
-    O="$OUT"
+    O="$KOUT"
     ARCH=arm64
     LLVM=1
     LLVM_IAS=1
@@ -76,12 +84,42 @@ MAKE_ARGS=(
 echo "[build] clang:     $(clang --version | head -1)"
 echo "[build] defconfig: $DEFCONFIG"
 echo "[build] jobs:      $JOBS"
-echo "[build] out:       $OUT"
+echo "[build] out:       $KOUT"
 
 make "${MAKE_ARGS[@]}" "$DEFCONFIG"
 make "${MAKE_ARGS[@]}" -j"$JOBS" Image.gz dtbs
 
 echo
-echo "[done] kernel: $OUT/arch/arm64/boot/Image.gz"
-echo "[done] dtbs:   $OUT/arch/arm64/boot/dts/"
-echo "[done] repack into a boot image to flash/test (Image.gz + appended dtb)."
+echo "[done] kernel: $KOUT/arch/arm64/boot/Image (+ Image.gz)"
+echo "[done] dtbs:   $KOUT/arch/arm64/boot/dts/"
+
+# --- AnyKernel3 flashable zip (kernel only -> boot of the active slot) ---
+make_zip() {
+    local src_dir stage name zip
+    src_dir="$(cd "$(dirname "$0")" && pwd)"
+    if [ ! -d "$AK3_DIR/.git" ]; then
+        git clone -q "$AK3_URL" "$AK3_DIR"
+    fi
+    if ! git -C "$AK3_DIR" cat-file -e "$AK3_COMMIT^{commit}" 2>/dev/null; then
+        git -C "$AK3_DIR" fetch -q origin
+    fi
+
+    stage="$KOUT/anykernel"
+    rm -rf "$stage"
+    mkdir -p "$stage"
+    git -C "$AK3_DIR" archive "$AK3_COMMIT" | tar -x -C "$stage"
+    rm -rf "$stage/README.md" "$stage/modules" "$stage/patch" "$stage/ramdisk"
+    cp "$src_dir/anykernel/anykernel.sh" "$stage/anykernel.sh"
+    cp "$KOUT/arch/arm64/boot/Image" "$stage/Image"
+
+    name="tundra-5.4-$(git -C "$src_dir" rev-parse --short=12 HEAD)-$(date -u +%Y%m%d-%H%M).zip"
+    zip="$KOUT/$name"
+    rm -f "$zip"
+    (cd "$stage" && zip -qr9 "$zip" . -x '.git*')
+    echo "[done] zip:    $zip"
+    echo "       flash: adb reboot sideload && adb sideload $name (or install from recovery)"
+}
+
+if [ "${NO_ZIP:-0}" != "1" ]; then
+    make_zip
+fi
