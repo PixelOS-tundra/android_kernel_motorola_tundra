@@ -5,6 +5,9 @@
  */
 
 #include <linux/completion.h>
+#include <linux/console.h>
+extern bool k61_drv_trace;
+#define K61C(fmt, ...) do { pr_info("k61dbg: " fmt, ##__VA_ARGS__); if (k61_drv_trace) { console_lock(); console_unlock(); } } while (0)
 #include <linux/io.h>
 #include <linux/irq.h>
 #include <linux/memblock.h>
@@ -2348,15 +2351,15 @@ retry_mhi_suspend:
 	case CNSS_MHI_RESUME:
 		mutex_lock(&pci_priv->mhi_ctrl->pm_mutex);
 		if (pci_priv->drv_connected_last) {
-			pr_info("k61dbg: cnss mhi resume: prevent_l1\n");
+			K61C("cnss mhi resume: prevent_l1\n");
 			ret = cnss_pci_prevent_l1(&pci_priv->pci_dev->dev);
-			pr_info("k61dbg: cnss mhi resume: prevent_l1 ret %d, fast_resume\n", ret);
+			K61C("cnss mhi resume: prevent_l1 ret %d, fast_resume\n", ret);
 			if (ret) {
 				mutex_unlock(&pci_priv->mhi_ctrl->pm_mutex);
 				break;
 			}
 			ret = cnss_mhi_pm_fast_resume(pci_priv, true);
-			pr_info("k61dbg: cnss mhi resume: fast_resume ret %d\n", ret);
+			K61C("cnss mhi resume: fast_resume ret %d\n", ret);
 			cnss_pci_allow_l1(&pci_priv->pci_dev->dev);
 		} else {
 			if (pci_priv->device_id == QCA6390_DEVICE_ID)

@@ -46,6 +46,7 @@
 #include <linux/clk/qcom.h>
 #include <soc/qcom/crm.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
+#include <linux/console.h>
 #include <soc/qcom/pcie-pdc.h>
 #include <linux/random.h>
 #include <linux/pci-ecam.h>
@@ -10179,11 +10180,34 @@ int msm_pcie_dsp_link_control(struct pci_dev *pci_dev,
 }
 EXPORT_SYMBOL_GPL(msm_pcie_dsp_link_control);
 
+/*
+ * DEBUG k61: trace window from the end of a DRV resume to the next
+ * allow_l1, with every print flushed to the consoles (console_unlock()
+ * writes out all pending records) so that the last line in pstore is the
+ * last step that completed.
+ */
+bool k61_drv_trace;
+EXPORT_SYMBOL(k61_drv_trace);
+
+#define K61T(fmt, ...)						\
+	do {							\
+		pr_info("k61dbg: " fmt, ##__VA_ARGS__);		\
+		if (k61_drv_trace) {				\
+			console_lock();				\
+			console_unlock();			\
+		}						\
+	} while (0)
+
 int msm_pcie_allow_l1(struct pci_dev *pci_dev)
 {
 	struct pci_dev *root_pci_dev;
 	struct msm_pcie_dev_t *pcie_dev;
 	int ret = 0;
+
+	if (k61_drv_trace) {
+		K61T("allow_l1: trace window closed\n");
+		k61_drv_trace = false;
+	}
 
 	root_pci_dev = pcie_find_root_port(pci_dev);
 	if (!root_pci_dev)
@@ -10385,14 +10409,18 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 	 * DRV fast resume / speed restore after an aborted suspend).
 	 */
 	k61_l1sub = readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS) & BIT(8);
-	pr_info("k61dbg: prevent_l1: LTSSM 0x%x PM_STTS 0x%x, PARF PM_CTRL write\n",
+	K61T("prevent_l1: LTSSM 0x%x PM_STTS 0x%x, PARF PM_CTRL write\n",
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM),
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS));
 	msm_pcie_write_mask(pcie_dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(5));
-	pr_info("k61dbg: prevent_l1: poll L0, LTSSM 0x%x\n",
+	K61T("prevent_l1: PM_CTRL written\n");
+	K61T("prevent_l1: poll L0, LTSSM 0x%x\n",
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
 
 	/* confirm link is in L0/L0s */
+	if (k61_drv_trace)
+		K61T("prevent_l1: first loop read, LTSSM 0x%x\n",
+		     readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
 	while (!msm_pcie_check_ltssm_state(pcie_dev, MSM_PCIE_LTSSM_L0) &&
 		!msm_pcie_check_ltssm_state(pcie_dev, MSM_PCIE_LTSSM_L0S)) {
 		/* Exiting early if linkdown happens */
@@ -10426,8 +10454,8 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 		 * (does the stall need the CPU to sleep, and how far does the
 		 * L1.2 exit get?)
 		 */
-		if (k61_l1sub) {
-			pr_info("k61dbg: prevent_l1 poll %u: LTSSM 0x%x PM_STTS 0x%x STTS_1 0x%x\n",
+		if (k61_l1sub || k61_drv_trace) {
+			K61T("prevent_l1 poll %u: LTSSM 0x%x PM_STTS 0x%x STTS_1 0x%x\n",
 				cnt, readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM),
 				readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS),
 				readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS_1));
@@ -10437,14 +10465,14 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 		}
 	}
 
-	pr_info("k61dbg: prevent_l1: L0 after %u polls, DBI LNKCTL write\n", cnt);
+	K61T("prevent_l1: L0 after %u polls, DBI LNKCTL write\n", cnt);
 	/* the controller (DBI) and the EP are reachable now: disable L1 there */
 	msm_pcie_write_mask(pcie_dev->dm_core +
 				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
 				PCI_EXP_LNKCTL_ASPM_L1, 0);
-	pr_info("k61dbg: prevent_l1: EP/RP L1 disable\n");
+	K61T("prevent_l1: DBI LNKCTL written, EP/RP L1 disable\n");
 	msm_pcie_config_l1_disable_all(pcie_dev, pcie_dev->dev->bus);
-	pr_info("k61dbg: prevent_l1: done\n");
+	K61T("prevent_l1: done\n");
 	k6x_regdump(pcie_dev);
 
 	PCIE_DBG2(pcie_dev, "PCIe: RC%d: %02x:%02x.%01x: exit\n",
@@ -11966,6 +11994,8 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 			 TO_LTSSM_STR(val & MSM_PCIE_LTSSM_MASK));
 
 	PCIE_DBG(pcie_dev, "drv_resume done speed %d ret %d LTSSM 0x%x\n", pcie_dev->current_link_speed, ret, val);
+	k61_drv_trace = true;
+	K61T("drv_resume: trace window open\n");
 	mutex_unlock(&pcie_dev->setup_lock);
 	mutex_unlock(&pcie_dev->recovery_lock);
 
