@@ -4231,6 +4231,7 @@ int cnss_pci_resume_bus(struct cnss_pci_data *pci_priv)
 	if (pci_priv->pci_link_state == PCI_LINK_UP)
 		goto out;
 
+	pr_info("k61dbg: cnss resume_bus link up\n");
 	if (cnss_set_pci_link(pci_priv, PCI_LINK_UP)) {
 		cnss_fatal_err("Failed to resume PCI link from suspend\n");
 		cnss_pci_link_down(&pci_dev->dev);
@@ -4243,6 +4244,7 @@ int cnss_pci_resume_bus(struct cnss_pci_data *pci_priv)
 	if (pci_priv->drv_connected_last)
 		goto skip_enable_pci;
 
+	pr_info("k61dbg: cnss resume_bus enable device\n");
 	ret = pci_enable_device(pci_dev);
 	if (ret) {
 		cnss_pr_err("Failed to enable PCI device, err = %d\n",
@@ -4250,14 +4252,17 @@ int cnss_pci_resume_bus(struct cnss_pci_data *pci_priv)
 		goto out;
 	}
 
+	pr_info("k61dbg: cnss resume_bus restore config\n");
 	if (pci_priv->saved_state)
 		cnss_set_pci_config_space(pci_priv,
 					  RESTORE_PCI_CONFIG_SPACE);
 	pci_set_master(pci_dev);
 
 skip_enable_pci:
+	pr_info("k61dbg: cnss resume_bus mhi resume (drv_last %d)\n", pci_priv->drv_connected_last);
 	if (cnss_pci_set_mhi_state(pci_priv, CNSS_MHI_RESUME))
 		ret = -EAGAIN;
+	pr_info("k61dbg: cnss resume_bus done %d\n", ret);
 out:
 	return ret;
 }
@@ -4364,7 +4369,9 @@ static int cnss_pci_resume(struct device *dev)
 			goto out;
 	}
 
+	pr_info("k61dbg: cnss resume_driver\n");
 	ret = cnss_pci_resume_driver(pci_priv);
+	pr_info("k61dbg: cnss resume_driver done %d\n", ret);
 
 	pci_priv->drv_connected_last = 0;
 	clear_bit(CNSS_IN_SUSPEND_RESUME, &plat_priv->driver_state);

@@ -11513,8 +11513,14 @@ static bool msm_pcie_ltssm_link_usable(u32 ltssm)
 	       ltssm == MSM_PCIE_LTSSM_L1_IDLE;
 }
 
+/* DEBUG k61: print the DRV resume/suspend steps (resume hang) */
+#pragma push_macro("PCIE_DBG")
+#undef PCIE_DBG
+#define PCIE_DBG(dev, fmt, arg...) pr_info("k61dbg: %s: " fmt, __func__, ##arg)
 static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 {
+	pr_info("k61dbg: drv_resume enter rc%d drv_enabled %d\n", pcie_dev->rc_idx,
+		!!PCIE_RC_DRV_ENABLED(pcie_dev->rc_idx));
 	struct msm_pcie_drv_info *drv_info = pcie_dev->drv_info;
 	struct msm_pcie_clk_info_t *clk_info;
 	u32 clkreq_override_en = 0, val = 0;
@@ -11529,6 +11535,7 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 		rpmsg_ret = msm_pcie_drv_send_rpmsg(pcie_dev,
 					&drv_info->drv_disable_l1ss_sleep);
 
+	PCIE_DBG(pcie_dev, "rpmsg l1ss done %d, vreg_init\n", rpmsg_ret);
 	msm_pcie_vreg_init(pcie_dev);
 
 	PCIE_DBG(pcie_dev, "PCIe: RC%d:enable gdsc-core\n", pcie_dev->rc_idx);
@@ -11568,6 +11575,7 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 
 	msm_pcie_cesta_disable_drv(pcie_dev);
 
+	PCIE_DBG(pcie_dev, "read PARF CLKREQ_OVERRIDE\n");
 	clkreq_override_en = readl_relaxed(pcie_dev->parf +
 				PCIE20_PARF_CLKREQ_OVERRIDE) &
 				PCIE20_PARF_CLKREQ_IN_ENABLE;
@@ -11652,11 +11660,13 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 
 	/* if DRV hand-off was done and DRV subsystem is powered up */
 	if (PCIE_RC_DRV_ENABLED(pcie_dev->rc_idx) && !rpmsg_ret) {
+		PCIE_DBG(pcie_dev, "send drv_disable\n");
 		msm_pcie_drv_send_rpmsg(pcie_dev,
 					&drv_info->drv_disable);
 		clear_bit(pcie_dev->rc_idx, &pcie_drv.rc_drv_enabled);
 	}
 
+	PCIE_DBG(pcie_dev, "read LINKCTRLSTATUS, LTSSM 0x%x\n", readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
 	/* scale CX and rate change based on current GEN speed */
 	pcie_dev->current_link_speed = (readl_relaxed(pcie_dev->dm_core +
 					PCIE20_CAP_LINKCTRLSTATUS) >> 16) &
@@ -11696,6 +11706,7 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 			 pcie_dev->rc_idx,
 			 TO_LTSSM_STR(val & MSM_PCIE_LTSSM_MASK));
 
+	PCIE_DBG(pcie_dev, "drv_resume done speed %d ret %d LTSSM 0x%x\n", pcie_dev->current_link_speed, ret, val);
 	mutex_unlock(&pcie_dev->setup_lock);
 	mutex_unlock(&pcie_dev->recovery_lock);
 
@@ -11810,6 +11821,7 @@ out:
 	mutex_unlock(&pcie_dev->recovery_lock);
 	return ret;
 }
+#pragma pop_macro("PCIE_DBG")
 
 int msm_pcie_pm_control(enum msm_pcie_pm_opt pm_opt, u32 busnr, void *user,
 			void *data, u32 options)
