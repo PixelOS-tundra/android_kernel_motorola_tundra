@@ -9002,7 +9002,7 @@ static void msm_pcie_config_l1ss_disable_all(struct msm_pcie_dev_t *dev,
 	}
 }
 
-static int msm_pcie_config_l1_2_threshold(struct pci_dev *pdev, void *dev)
+static int __maybe_unused msm_pcie_config_l1_2_threshold(struct pci_dev *pdev, void *dev)
 {
 	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)dev;
 	u32 l1ss_cap_id_offset, l1ss_ctl1_offset;
@@ -9048,12 +9048,56 @@ static int msm_pcie_config_l1ss_enable(struct pci_dev *pdev, void *dev)
 	return 0;
 }
 
+/*
+ * TEST k61: L1 PM substate timing as 5.4 ended up with on lahaina + QCA6490
+ * (generic ASPM, POWER_SUPERSAVE): T_POWER_ON 0 (both ports advertise 0) and
+ * LTR_L1.2_THRESHOLD value 2 scale 3, instead of 6.1's T_POWER_ON 10 us and
+ * the DT threshold. T_POWER_ON is the wait between the L1.2 exit and the
+ * transmitter coming up, the step where 6.1 wedges after a DRV resume.
+ */
+static int k61_l1ss_timing_54(struct pci_dev *pdev, void *dev)
+{
+	u16 l1ss = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_L1SS);
+	u32 ctl1;
+
+	if (!l1ss)
+		return 0;
+	pci_read_config_dword(pdev, l1ss + PCI_L1SS_CTL1, &ctl1);
+	/* L1.2 must be off while its timing is programmed */
+	pci_write_config_dword(pdev, l1ss + PCI_L1SS_CTL1,
+			       ctl1 & ~PCI_L1SS_CTL1_L1_2_MASK);
+	pci_write_config_dword(pdev, l1ss + PCI_L1SS_CTL2, 0);
+	ctl1 &= ~(PCI_L1SS_CTL1_LTR_L12_TH_VALUE | PCI_L1SS_CTL1_LTR_L12_TH_SCALE);
+	ctl1 |= (3 << 29) | (2 << 16);
+	pci_write_config_dword(pdev, l1ss + PCI_L1SS_CTL1, ctl1);
+	return 0;
+}
+
+static void k61_l1ss_timing_print(struct pci_dev *pdev)
+{
+	u16 l1ss = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_L1SS);
+	u32 c1 = 0, c2 = 0;
+
+	if (!l1ss)
+		return;
+	pci_read_config_dword(pdev, l1ss + PCI_L1SS_CTL1, &c1);
+	pci_read_config_dword(pdev, l1ss + PCI_L1SS_CTL2, &c2);
+	pr_info("k61dbg: l1ss %s ctl1 0x%x ctl2 0x%x\n", pci_name(pdev), c1, c2);
+}
+
+static int k61_l1ss_timing_print_walk(struct pci_dev *pdev, void *dev)
+{
+	k61_l1ss_timing_print(pdev);
+	return 0;
+}
+
 static void msm_pcie_config_l1ss_enable_all(struct msm_pcie_dev_t *dev)
 {
 	if (dev->l1ss_supported) {
-		pci_walk_bus(dev->dev->bus, msm_pcie_config_l1_2_threshold,
-				dev);
+		/* TEST k61: 5.4 timing instead of the DT threshold */
+		pci_walk_bus(dev->dev->bus, k61_l1ss_timing_54, dev);
 		pci_walk_bus(dev->dev->bus, msm_pcie_config_l1ss_enable, dev);
+		pci_walk_bus(dev->dev->bus, k61_l1ss_timing_print_walk, dev);
 	}
 }
 
@@ -10254,6 +10298,7 @@ static void k6x_regdump(struct msm_pcie_dev_t *d)
 	}
 	pr_info("k6xdump: end\n");
 	k6x_phycheck(d, "L0");
+	pci_walk_bus(d->dev->bus, k61_l1ss_timing_print_walk, d);
 }
 
 /* DEBUG k6x: full PARF dump right after drv_disable, first 2 per boot */
