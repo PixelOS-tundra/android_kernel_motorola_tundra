@@ -73,9 +73,32 @@ static int ksu_handle_inode_event(struct fsnotify_mark *mark, u32 mask, struct i
     return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
+// Before 5.10 there is no handle_inode_event(); handle_event() gets the
+// watched inode (the parent dir for child events) and the child's name.
+static int ksu_handle_event(struct fsnotify_group *group, struct inode *inode, u32 mask, const void *data,
+                            int data_type, const struct qstr *file_name, u32 cookie,
+                            struct fsnotify_iter_info *iter_info)
+{
+    return ksu_handle_inode_event(NULL, mask, NULL, inode, file_name, cookie);
+}
+
+// 5.4 fsnotify_final_mark_destroy() calls ->free_mark() unconditionally.
+// Marks are kzalloc()ed in add_mark_on_inode().
+static void ksu_free_mark(struct fsnotify_mark *mark)
+{
+    kfree(mark);
+}
+
+static const struct fsnotify_ops ksu_ops = {
+    .handle_event = ksu_handle_event,
+    .free_mark = ksu_free_mark,
+};
+#else
 static const struct fsnotify_ops ksu_ops = {
     .handle_inode_event = ksu_handle_inode_event,
 };
+#endif
 
 static int add_mark_on_inode(struct inode *inode, u32 mask, struct fsnotify_mark **out)
 {

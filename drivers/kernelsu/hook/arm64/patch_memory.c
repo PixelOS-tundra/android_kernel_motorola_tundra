@@ -40,7 +40,7 @@ unsigned long phys_from_virt(unsigned long addr, int *err)
     if (p4d_none(*p4d) || p4d_bad(*p4d))
         goto fail;
     pr_debug("p4d of 0x%lx p=0x%lx v=0x%lx", addr, (uintptr_t)p4d, (uintptr_t)p4d_val(*p4d));
-#if defined(p4d_leaf)
+#if defined(p4d_leaf) && defined(__p4d_to_phys) // arm64 5.4: p4d folded, no __p4d_to_phys
     if (p4d_leaf(*p4d)) {
         pr_debug("Address 0x%lx maps to a P4D-level huge page\n", addr);
         return __p4d_to_phys(*p4d) + ((addr & ~P4D_MASK));

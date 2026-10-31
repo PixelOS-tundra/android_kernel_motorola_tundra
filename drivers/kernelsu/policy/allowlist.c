@@ -1,4 +1,5 @@
 #include <linux/rcupdate.h>
+#include <linux/sched/task.h> /* get/put_task_struct */
 #include <linux/limits.h>
 #include <linux/rculist.h>
 #include <linux/mutex.h>
