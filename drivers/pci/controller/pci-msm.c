@@ -10174,6 +10174,47 @@ out:
 }
 EXPORT_SYMBOL(msm_pcie_allow_l1);
 
+/* DEBUG k61: one-shot PCIe0 register dump in L0 (5.4 vs 6.1 diff) */
+static void k6x_dump_block(const char *name, void __iomem *base, u32 size)
+{
+	u32 i;
+
+	for (i = 0; i + 32 <= size; i += 32)
+		pr_info("k6xdump: %s 0x%04x %08x %08x %08x %08x %08x %08x %08x %08x\n",
+			name, i,
+			readl_relaxed(base + i), readl_relaxed(base + i + 4),
+			readl_relaxed(base + i + 8), readl_relaxed(base + i + 12),
+			readl_relaxed(base + i + 16), readl_relaxed(base + i + 20),
+			readl_relaxed(base + i + 24), readl_relaxed(base + i + 28));
+}
+
+static void k6x_regdump(struct msm_pcie_dev_t *d)
+{
+	static bool done;
+	void __iomem *gcc;
+
+	if (done || d->rc_idx || ktime_get_boottime_seconds() < 90)
+		return;
+	done = true;
+
+	pr_info("k6xdump: begin LTSSM 0x%x\n",
+		readl_relaxed(d->parf + PCIE20_PARF_LTSSM));
+	k6x_dump_block("parf", d->parf, 0x2000);
+	k6x_dump_block("phy", d->phy, 0x2000);
+	k6x_dump_block("dbi", d->dm_core, 0xf00);
+	gcc = ioremap(0x16b000, 0x1000);
+	if (gcc) {
+		k6x_dump_block("gcc6b", gcc, 0x100);
+		iounmap(gcc);
+	}
+	gcc = ioremap(0x152000, 0x20);
+	if (gcc) {
+		k6x_dump_block("gcc52", gcc, 0x20);
+		iounmap(gcc);
+	}
+	pr_info("k6xdump: end\n");
+}
+
 int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 {
 	struct pci_dev *root_pci_dev;
@@ -10274,6 +10315,7 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 	pr_info("k61dbg: prevent_l1: EP/RP L1 disable\n");
 	msm_pcie_config_l1_disable_all(pcie_dev, pcie_dev->dev->bus);
 	pr_info("k61dbg: prevent_l1: done\n");
+	k6x_regdump(pcie_dev);
 
 	PCIE_DBG2(pcie_dev, "PCIe: RC%d: %02x:%02x.%01x: exit\n",
 		pcie_dev->rc_idx, pci_dev->bus->number,
