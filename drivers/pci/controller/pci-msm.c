@@ -10351,6 +10351,20 @@ static void k6x_parf_drv(struct msm_pcie_dev_t *d)
 		return;
 	pr_info("k6xpdrv: begin %u\n", n);
 	k6x_dump_block("pdrv", d->parf, 0x1000);
+	k6x_dump_block("phydrv", d->phy, 0x2000);
+	{
+		void __iomem *g = ioremap(0x16b000, 0x100);
+
+		if (g) {
+			k6x_dump_block("gcc6bdrv", g, 0x100);
+			iounmap(g);
+		}
+		g = ioremap(0x152000, 0x20);
+		if (g) {
+			k6x_dump_block("gcc52drv", g, 0x20);
+			iounmap(g);
+		}
+	}
 	pr_info("k6xpdrv: end %u\n", n);
 }
 
