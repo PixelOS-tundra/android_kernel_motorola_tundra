@@ -6521,6 +6521,23 @@ static void msm_pcie_disable_dbi_mirroring(struct msm_pcie_dev_t *dev)
 	struct resource *atu_res = dev->res[MSM_PCIE_RES_IATU].resource;
 	u32 slv_addr_space_size = 0x80000000;
 
+	/*
+	 * TEST k61: the 5.4 address layout on lahaina (PARF dumps, k54dbg):
+	 * DBI base 0, ATU base 0x1000 (both relative, mirrored), slave address
+	 * space 64 MB. With everything else in the post-DRV PARF state equal
+	 * to 5.4, this is the last controller difference.
+	 */
+	if (1) {
+		msm_pcie_write_reg(dev->parf, PCIE20_PARF_DBI_BASE_ADDR, 0);
+		msm_pcie_write_reg(dev->parf, PCIE20_PARF_DBI_BASE_ADDR_HI, 0);
+		msm_pcie_write_reg(dev->parf, PCIE20_PARF_ATU_BASE_ADDR, 0x1000);
+		msm_pcie_write_reg(dev->parf, PCIE20_PARF_ATU_BASE_ADDR_HI, 0);
+		msm_pcie_write_reg(dev->parf, PCIE20_PARF_SLV_ADDR_SPACE_SIZE,
+				   0x04000000);
+		msm_pcie_write_reg(dev->parf, PCIE20_PARF_SLV_ADDR_SPACE_SIZE_HI, 0);
+		return;
+	}
+
 	/* Configure DBI base address */
 	msm_pcie_write_reg(dev->parf, PCIE20_PARF_DBI_BASE_ADDR,
 				PCIE_LOWER_ADDR(dbi_res->start));
