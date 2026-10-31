@@ -3,16 +3,16 @@
 #include <linux/fdtable.h>
 #include <linux/file.h>
 #include <linux/fs.h>
-#include <linux/kprobes.h>
 #include <linux/pid.h>
 #include <linux/slab.h>
 #include <linux/syscalls.h>
-#include <linux/task_work.h>
 #include <linux/uaccess.h>
 #include <linux/version.h>
 
 #include "uapi/supercall.h"
 #include "supercall/internal.h"
+#include "supercall/supercall.h"
+#include "hook/syscall_hook.h"
 #include "arch.h"
 #include "util.h"
 #include "klog.h" // IWYU pragma: keep
@@ -23,10 +23,6 @@ struct ksu_driver_context {
     unsigned long permissions;
 };
 
-struct ksu_install_fd_tw {
-    struct callback_head cb;
-    int __user *outp;
-};
 
 static int anon_ksu_release(struct inode *inode, struct file *filp)
 {
@@ -99,67 +95,40 @@ bool ksu_is_su_session_fd(const struct file *filp)
     return context && (context->permissions & KSU_DRIVER_PERMISSION_SU_SESSION);
 }
 
-static void ksu_install_fd_tw_func(struct callback_head *cb)
+/*
+ * reboot(KSU_INSTALL_MAGIC1, KSU_INSTALL_MAGIC2, 0, int __user *outp) is the
+ * preinit runner's (PID 1) request for a KSU fd. Inline builds have no kprobes,
+ * so this is routed through the sys_enter syscall dispatcher; PID 1 is always
+ * marked. We are in syscall context, so the fd is installed directly instead
+ * of via task_work.
+ */
+long __nocfi ksu_hook_reboot(int orig_nr, const struct pt_regs *regs)
 {
-    struct ksu_install_fd_tw *tw = container_of(cb, struct ksu_install_fd_tw, cb);
-    int fd = ksu_install_fd();
-
-    pr_info("[%d] install ksu fd: %d\n", current->pid, fd);
-    if (copy_to_user(tw->outp, &fd, sizeof(fd))) {
-        pr_err("install ksu fd reply err\n");
-        ksu_close_fd(fd);
-    }
-
-    kfree(tw);
-}
-
-static int reboot_handler_pre(struct kprobe *p, struct pt_regs *regs)
-{
-    struct pt_regs *real_regs = PT_REAL_REGS(regs);
-    int magic1 = (int)PT_REGS_SYSCALL_PARM1(real_regs);
-    int magic2 = (int)PT_REGS_PARM2(real_regs);
+    int magic1 = (int)PT_REGS_SYSCALL_PARM1(regs);
+    int magic2 = (int)PT_REGS_PARM2(regs);
 
     if (magic1 == KSU_INSTALL_MAGIC1 && magic2 == KSU_INSTALL_MAGIC2) {
-        struct ksu_install_fd_tw *tw;
-        unsigned long arg4 = (unsigned long)PT_REGS_SYSCALL_PARM4(real_regs);
+        int __user *outp = (int __user *)PT_REGS_SYSCALL_PARM4(regs);
+        int fd = ksu_install_fd();
 
-        tw = kzalloc(sizeof(*tw), GFP_ATOMIC);
-        if (!tw)
-            return 0;
-
-        tw->outp = (int __user *)arg4;
-        tw->cb.func = ksu_install_fd_tw_func;
-
-        if (task_work_add(current, &tw->cb, TWA_RESUME)) {
-            kfree(tw);
-            pr_warn("install fd add task_work failed\n");
+        pr_info("[%d] install ksu fd: %d\n", current->pid, fd);
+        if (fd >= 0 && copy_to_user(outp, &fd, sizeof(fd))) {
+            pr_err("install ksu fd reply err\n");
+            ksu_close_fd(fd);
         }
+        /* Same result the real sys_reboot gives for a bad magic. */
+        return -EINVAL;
     }
 
-    return 0;
+    return ksu_syscall_table[orig_nr](regs);
 }
-
-static struct kprobe reboot_kp = {
-    .symbol_name = REBOOT_SYMBOL,
-    .pre_handler = reboot_handler_pre,
-};
 
 void __init ksu_supercalls_init(void)
 {
-    int rc;
-
     ksu_supercall_dump_commands();
-
-    rc = register_kprobe(&reboot_kp);
-    if (rc) {
-        pr_err("reboot kprobe failed: %d\n", rc);
-    } else {
-        pr_info("reboot kprobe registered successfully\n");
-    }
 }
 
 void __exit ksu_supercalls_exit(void)
 {
-    unregister_kprobe(&reboot_kp);
     ksu_supercall_cleanup_state();
 }

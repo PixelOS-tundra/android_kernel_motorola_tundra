@@ -24,6 +24,10 @@ int ksu_install_fd(void);
 int ksu_install_su_fd(void);
 bool ksu_is_su_session_fd(const struct file *filp);
 
+struct pt_regs;
+// sys_enter dispatcher handler for the preinit runner's reboot(MAGIC) fd request
+long ksu_hook_reboot(int orig_nr, const struct pt_regs *regs);
+
 void ksu_supercalls_init(void);
 void ksu_supercalls_exit(void);
 #endif // __KSU_H_SUPERCALL

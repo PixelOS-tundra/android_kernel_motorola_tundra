@@ -5879,6 +5879,13 @@ CONFIG_SENSORS_CLASS=y
 # CONFIG_TZLOG_DUMP is not set
 # CONFIG_WATCHDOG_CPU_CTX is not set
 CONFIG_WATCHDOGTEST=y
+
+#
+# KernelSU
+#
+CONFIG_KSU=y
+# CONFIG_KSU_DEBUG is not set
+# end of KernelSU
 # end of Device Drivers
 
 #

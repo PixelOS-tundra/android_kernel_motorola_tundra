@@ -8,6 +8,11 @@
 #include <linux/rculist.h>
 #include <linux/task_work.h>
 #include <linux/version.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
+/* pre-5.10 task_work_add() takes a bool notify; true == TWA_RESUME */
+#define TWA_RESUME true
+#endif
+#include <linux/version.h>
 #include "klog.h" // IWYU pragma: keep
 #include "manager/throne_tracker.h"
 

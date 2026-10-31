@@ -11,7 +11,6 @@
 #include <linux/fs.h>
 #include <linux/version.h>
 #include <linux/input-event-codes.h>
-#include <linux/kprobes.h>
 #include <linux/printk.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
@@ -54,7 +53,12 @@ static const char KERNEL_SU_RC[] =
 static void stop_init_rc_hook();
 static void stop_execve_hook();
 
-static struct work_struct stop_input_hook_work;
+/*
+ * Inline (non-kprobe) builds: drivers/input/input.c calls
+ * ksu_handle_input_handle_event() from input_event() while this is set.
+ * Only set by ksu_ksud_init(), so late-load mode never counts keys.
+ */
+bool ksu_input_hook __read_mostly = false;
 
 #define MAX_ARG_STRINGS 0x7FFFFFFF
 struct user_arg_ptr {
@@ -618,24 +622,6 @@ static long ksu_sys_fstat(const struct pt_regs *regs)
     return ret;
 }
 
-static int input_handle_event_handler_pre(struct kprobe *p, struct pt_regs *regs)
-{
-    unsigned int *type = (unsigned int *)&PT_REGS_PARM2(regs);
-    unsigned int *code = (unsigned int *)&PT_REGS_PARM3(regs);
-    int *value = (int *)&PT_REGS_CCALL_PARM4(regs);
-    return ksu_handle_input_handle_event(type, code, value);
-}
-
-static struct kprobe input_event_kp = {
-    .symbol_name = "input_event",
-    .pre_handler = input_handle_event_handler_pre,
-};
-
-static void do_stop_input_hook(struct work_struct *work)
-{
-    unregister_kprobe(&input_event_kp);
-}
-
 static void stop_init_rc_hook()
 {
     ksu_syscall_table_unhook(__NR_read);
@@ -650,22 +636,18 @@ void ksu_stop_input_hook_runtime(void)
         return;
     }
     input_hook_stopped = true;
-    bool ret = schedule_work(&stop_input_hook_work);
-    pr_info("unregister input kprobe: %d!\n", ret);
+    WRITE_ONCE(ksu_input_hook, false);
+    pr_info("stop input hook\n");
 }
 
 // ksud: module support
 void __init ksu_ksud_init()
 {
-    int ret;
-
     ksu_syscall_table_hook(__NR_read, ksu_sys_read, &orig_sys_read);
     ksu_syscall_table_hook(__NR_fstat, ksu_sys_fstat, &orig_sys_fstat);
 
-    ret = register_kprobe(&input_event_kp);
-    pr_info("ksud: input_event_kp: %d\n", ret);
-
-    INIT_WORK(&stop_input_hook_work, do_stop_input_hook);
+    WRITE_ONCE(ksu_input_hook, true);
+    pr_info("ksud: input hook enabled\n");
 }
 
 void __exit ksu_ksud_exit()
@@ -673,7 +655,7 @@ void __exit ksu_ksud_exit()
     // TODO:
     // this should be done before unregister vfs_read_kp
     // stop_init_rc_hook();
-    unregister_kprobe(&input_event_kp);
+    WRITE_ONCE(ksu_input_hook, false);
 
     if (module_rc_buf) {
         free_module_rc();
