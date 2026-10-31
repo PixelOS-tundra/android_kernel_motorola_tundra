@@ -11495,14 +11495,43 @@ out:
 	return ret;
 }
 
+/* DEBUG k61: log LTSSM and wait for a usable link after DRV resume */
+static u32 k61_ltssm(struct msm_pcie_dev_t *pcie_dev)
+{
+	return readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM) &
+		MSM_PCIE_LTSSM_MASK;
+}
+
+static int k61_wait_link_usable(struct msm_pcie_dev_t *pcie_dev)
+{
+	u32 st, last = ~0U;
+	int i;
+
+	for (i = 0; i < 1000; i++) {
+		st = k61_ltssm(pcie_dev);
+		if (st != last) {
+			pr_info("k61dbg: drv_resume LTSSM %s (0x%x) at %d x100us\n",
+				TO_LTSSM_STR(st), st, i);
+			last = st;
+		}
+		if (st == MSM_PCIE_LTSSM_L0 || st == MSM_PCIE_LTSSM_L0S ||
+		    st == MSM_PCIE_LTSSM_L1_IDLE)
+			return 0;
+		udelay(100);
+	}
+	pr_err("k61dbg: drv_resume link not usable after 100 ms, LTSSM %s (0x%x)\n",
+	       TO_LTSSM_STR(st), st);
+	return -ETIMEDOUT;
+}
+
 /* DEBUG k61: print the DRV resume/suspend steps (resume hang) */
 #pragma push_macro("PCIE_DBG")
 #undef PCIE_DBG
 #define PCIE_DBG(dev, fmt, arg...) pr_info("k61dbg: %s: " fmt, __func__, ##arg)
 static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 {
-	pr_info("k61dbg: drv_resume enter rc%d drv_enabled %d\n", pcie_dev->rc_idx,
-		!!PCIE_RC_DRV_ENABLED(pcie_dev->rc_idx));
+	pr_info("k61dbg: drv_resume enter rc%d drv_enabled %d ltssm 0x%x\n", pcie_dev->rc_idx,
+		!!PCIE_RC_DRV_ENABLED(pcie_dev->rc_idx), k61_ltssm(pcie_dev));
 	struct msm_pcie_drv_info *drv_info = pcie_dev->drv_info;
 	struct msm_pcie_clk_info_t *clk_info;
 	u32 clkreq_override_en = 0;
@@ -11642,7 +11671,7 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 
 	/* if DRV hand-off was done and DRV subsystem is powered up */
 	if (PCIE_RC_DRV_ENABLED(pcie_dev->rc_idx) && !rpmsg_ret) {
-		PCIE_DBG(pcie_dev, "send drv_disable\n");
+		PCIE_DBG(pcie_dev, "send drv_disable, ltssm 0x%x\n", k61_ltssm(pcie_dev));
 		msm_pcie_drv_send_rpmsg(pcie_dev,
 					&drv_info->drv_disable);
 		clear_bit(pcie_dev->rc_idx, &pcie_drv.rc_drv_enabled);
@@ -11672,10 +11701,11 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 		enable_irq(pcie_dev->irq[MSM_PCIE_INT_GLOBAL_INT].num);
 
 	PCIE_DBG(pcie_dev, "drv_resume done speed %d\n", pcie_dev->current_link_speed);
+	ret = k61_wait_link_usable(pcie_dev);
 	mutex_unlock(&pcie_dev->setup_lock);
 	mutex_unlock(&pcie_dev->recovery_lock);
 
-	return 0;
+	return ret;
 
 out:
 	mutex_unlock(&pcie_dev->setup_lock);
