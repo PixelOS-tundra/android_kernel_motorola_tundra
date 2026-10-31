@@ -10247,6 +10247,18 @@ static void k6x_regdump(struct msm_pcie_dev_t *d)
 	k6x_phycheck(d, "L0");
 }
 
+/* DEBUG k6x: full PARF dump right after drv_disable, first 2 per boot */
+static void k6x_parf_drv(struct msm_pcie_dev_t *d)
+{
+	static unsigned int n;
+
+	if (d->rc_idx || n++ >= 2)
+		return;
+	pr_info("k6xpdrv: begin %u\n", n);
+	k6x_dump_block("pdrv", d->parf, 0x1000);
+	pr_info("k6xpdrv: end %u\n", n);
+}
+
 int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 {
 	bool k61_l1sub = false;
@@ -11838,6 +11850,7 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 		clear_bit(pcie_dev->rc_idx, &pcie_drv.rc_drv_enabled);
 	}
 
+	k6x_parf_drv(pcie_dev);
 	k6x_phycheck(pcie_dev, "after drv_disable");
 	k61_parf_watch(pcie_dev);
 
