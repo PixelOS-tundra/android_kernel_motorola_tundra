@@ -20,6 +20,7 @@
 
 #include <linux/device.h>
 #include <linux/export.h>
+#include <linux/delay.h>
 #include <linux/mutex.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
@@ -756,8 +757,19 @@ void dpm_resume_noirq(pm_message_t state)
 	dpm_noirq_resume_devices(state);
 
 	pr_info("k61dbg: pm: noirq callbacks done, resuming irqs\n");
-	resume_device_irqs();
-	pr_info("k61dbg: pm: irqs resumed\n");
+	{
+		extern bool k61_trace_resume_irqs;
+
+		WRITE_ONCE(k61_trace_resume_irqs, true);
+		resume_device_irqs();
+		pr_info("k61dbg: pm: irqs resumed\n");
+		/* keep tracing through the rest of the early resume */
+		device_wakeup_disarm_wake_irqs();
+		pr_info("k61dbg: pm: wake irqs disarmed\n");
+		mdelay(5);
+		WRITE_ONCE(k61_trace_resume_irqs, false);
+		return;
+	}
 	device_wakeup_disarm_wake_irqs();
 	pr_info("k61dbg: pm: wake irqs disarmed\n");
 }

@@ -199,10 +199,18 @@ irqreturn_t handle_irq_event_percpu(struct irq_desc *desc)
 	return retval;
 }
 
+/* DEBUG k61: set around resume_device_irqs() */
+bool k61_trace_resume_irqs;
+
 irqreturn_t handle_irq_event(struct irq_desc *desc)
 {
 	irqreturn_t ret;
 
+	if (unlikely(READ_ONCE(k61_trace_resume_irqs)))
+		pr_info("k61dbg: irq %u hw %lu %s cpu%d\n", irq_desc_get_irq(desc),
+			desc->irq_data.hwirq,
+			desc->action && desc->action->name ? desc->action->name : "?",
+			raw_smp_processor_id());
 	desc->istate &= ~IRQS_PENDING;
 	irqd_set(&desc->irq_data, IRQD_IRQ_INPROGRESS);
 	raw_spin_unlock(&desc->lock);
