@@ -10201,10 +10201,16 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 	 * be in L1 and an endpoint config access there hung the bus until
 	 * the watchdog bit (cnss DRV fast resume after an aborted suspend).
 	 */
+	pr_info("k61dbg: prevent_l1: LTSSM 0x%x PM_STTS 0x%x, DBI LNKCTL write\n",
+		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM),
+		readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS));
 	msm_pcie_write_mask(pcie_dev->dm_core +
 				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
 				PCI_EXP_LNKCTL_ASPM_L1, 0);
+	pr_info("k61dbg: prevent_l1: PARF PM_CTRL write\n");
 	msm_pcie_write_mask(pcie_dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(5));
+	pr_info("k61dbg: prevent_l1: poll L0, LTSSM 0x%x\n",
+		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
 
 	/* confirm link is in L0/L0s */
 	while (!msm_pcie_check_ltssm_state(pcie_dev, MSM_PCIE_LTSSM_L0) &&
@@ -10238,8 +10244,10 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 		usleep_range(100, 105);
 	}
 
+	pr_info("k61dbg: prevent_l1: L0 after %u polls, EP/RP L1 disable\n", cnt);
 	/* Disable L1 on EP and RP too, now that the link is in L0/L0s */
 	msm_pcie_config_l1_disable_all(pcie_dev, pcie_dev->dev->bus);
+	pr_info("k61dbg: prevent_l1: done\n");
 
 	PCIE_DBG2(pcie_dev, "PCIe: RC%d: %02x:%02x.%01x: exit\n",
 		pcie_dev->rc_idx, pci_dev->bus->number,
