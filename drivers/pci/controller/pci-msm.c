@@ -9643,6 +9643,8 @@ static void msm_pcie_read_dt(struct msm_pcie_dev_t *pcie_dev, int rc_idx,
 
 	of_property_read_u32(of_node, "qcom,l1ss-sleep-disable",
 					&pcie_dev->l1ss_sleep_disable);
+	/* DEBUG k61: A/B, never let the DRV subsystem sleep the link in L1ss */
+	pcie_dev->l1ss_sleep_disable = 1;
 
 	ret = of_property_read_u32(of_node, "qcom,drv-l1ss-timeout-us",
 					&pcie_dev->l1ss_timeout_us);
