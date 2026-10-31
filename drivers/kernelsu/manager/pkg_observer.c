@@ -3,183 +3,205 @@
 #include <linux/fs.h>
 #include <linux/namei.h>
 #include <linux/fsnotify_backend.h>
-#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/rculist.h>
+#include <linux/sched.h>
 #include <linux/task_work.h>
 #include <linux/version.h>
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-/* pre-5.10 task_work_add() takes a bool notify; true == TWA_RESUME */
-#define TWA_RESUME true
-#endif
-#include <linux/version.h>
 #include "klog.h" // IWYU pragma: keep
-#include "manager/throne_tracker.h"
+#include "throne_tracker.h"
+#include "runtime/ksud_boot.h"
+#include "compat/kernel_compat.h" // TWA_RESUME on < 5.7
 
 #define MASK_SYSTEM (FS_CREATE | FS_MOVE | FS_EVENT_ON_CHILD)
+#define MASK_ADB (FS_CLOSE_WRITE | FS_MOVE | FS_DELETE | FS_EVENT_ON_CHILD)
 
 struct watch_dir {
-    const char *path;
-    u32 mask;
-    struct path kpath;
-    struct inode *inode;
-    struct fsnotify_mark *mark;
+	const char *path;
+	u32 mask;
+	struct path kpath;
+	struct inode *inode;
+	struct fsnotify_mark *mark;
 };
 
 static struct fsnotify_group *g;
 
+/*
+ * fsnotify fires from inside fsnotify_move(), i.e. still under the
+ * down_write() that do_renameat2() took on /data/system->i_rwsem, and with
+ * fsnotify_mark_srcu read-locked. track_throne() opens /data/system/packages
+ * .list, which takes that same rwsem shared - the calling task then blocks
+ * on its own write lock, forever, while holding throne_tracker_mutex so every
+ * other caller queues behind it. Defer to task_work, which runs before the
+ * syscall returns to userspace.
+ */
 static void ksu_track_throne_tw_func(struct callback_head *cb)
 {
-    kfree(cb);
-    // Runs after exit_fs() if the task is exiting; path lookups would oops
-    if (current->flags & PF_EXITING)
-        return;
-    track_throne(false);
+	kfree(cb);
+	/* 4.14 kernel/exit.c runs exit_task_work() after exit_fs(). */
+	if (current->flags & PF_EXITING)
+		return;
+	track_throne(false);
 }
 
-// Never scan from the fsnotify handler: fsnotify_mark_srcu and the rename's dir
-// locks would be held for the whole scan. Defer with task_work, not a kthread
-// or kworker: the scan must finish before the rename returns, or the manager
-// can be opened before it is crowned, and it must run in the renamer's
-// (Android's) namespaces, which differ from init_task's on WSA/Waydroid.
 static void ksu_defer_track_throne(void)
 {
-    struct callback_head *cb;
+	struct callback_head *cb;
 
-    if (!(current->flags & PF_KTHREAD)) {
-        cb = kzalloc(sizeof(*cb), GFP_KERNEL);
-        if (cb) {
-            cb->func = ksu_track_throne_tw_func;
-            if (!task_work_add(current, cb, TWA_RESUME))
-                return;
-            kfree(cb);
-        }
-    }
-    pr_warn("defer track_throne failed, run it inline\n");
-    track_throne(false);
+	if (current->flags & PF_KTHREAD)
+		return;
+
+	cb = kzalloc(sizeof(*cb), GFP_KERNEL);
+	if (!cb) {
+		pr_warn("defer track_throne: alloc failed, skipping event\n");
+		return;
+	}
+
+	cb->func = ksu_track_throne_tw_func;
+	if (task_work_add(current, cb, TWA_RESUME)) {
+		kfree(cb);
+		pr_warn("defer track_throne: task_work_add failed, skipping event\n");
+	}
 }
 
-static int ksu_handle_inode_event(struct fsnotify_mark *mark, u32 mask, struct inode *inode, struct inode *dir,
-                                  const struct qstr *file_name, u32 cookie)
+#include "pkg_observer_defs.h" // KSU_DECL_FSNOTIFY_OPS
+static KSU_DECL_FSNOTIFY_OPS(ksu_handle_inode_event)
 {
-    if (!file_name)
-        return 0;
-    if (mask & FS_ISDIR)
-        return 0;
-    if (file_name->len == 13 && !memcmp(file_name->name, "packages.list", 13)) {
-        pr_info("packages.list detected: %d\n", mask);
-        ksu_defer_track_throne();
-    }
-    return 0;
-}
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 10, 0)
-// Before 5.10 there is no handle_inode_event(); handle_event() gets the
-// watched inode (the parent dir for child events) and the child's name.
-static int ksu_handle_event(struct fsnotify_group *group, struct inode *inode, u32 mask, const void *data,
-                            int data_type, const struct qstr *file_name, u32 cookie,
-                            struct fsnotify_iter_info *iter_info)
-{
-    return ksu_handle_inode_event(NULL, mask, NULL, inode, file_name, cookie);
-}
-
-// 5.4 fsnotify_final_mark_destroy() calls ->free_mark() unconditionally.
-// Marks are kzalloc()ed in add_mark_on_inode().
-static void ksu_free_mark(struct fsnotify_mark *mark)
-{
-    kfree(mark);
+	if (!file_name)
+		return 0;
+	if (mask & FS_ISDIR)
+		return 0;
+	if (ksu_fname_len(file_name) == 13 &&
+	    !memcmp(ksu_fname_arg(file_name), "packages.list", 13)) {
+		if (mask & (FS_CREATE | FS_MOVED_TO)) {
+			pr_info("packages.list detected: %d\n", mask);
+			ksu_defer_track_throne();
+		}
+	}
+	/* Only /data/adb has a "ksud"; keep sucompat's view of it current. */
+	if (ksu_fname_len(file_name) == 4 &&
+	    !memcmp(ksu_fname_arg(file_name), "ksud", 4)) {
+		if (mask & (FS_CLOSE_WRITE | FS_MOVED_TO))
+			ksu_set_ksud_present(true);
+		else if (mask & (FS_DELETE | FS_MOVED_FROM))
+			ksu_set_ksud_present(false);
+	}
+	return 0;
 }
 
 static const struct fsnotify_ops ksu_ops = {
-    .handle_event = ksu_handle_event,
-    .free_mark = ksu_free_mark,
-};
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+	.handle_inode_event = ksu_handle_inode_event,
 #else
-static const struct fsnotify_ops ksu_ops = {
-    .handle_inode_event = ksu_handle_inode_event,
+	.handle_event = ksu_handle_inode_event,
+#endif
 };
+
+static void __maybe_unused m_free(struct fsnotify_mark *m)
+{
+	if (m) {
+		kfree(m);
+	}
+}
+
+static int add_mark_on_inode(struct inode *inode, u32 mask,
+			     struct fsnotify_mark **out)
+{
+	struct fsnotify_mark *m;
+	int ret;
+
+	m = kzalloc(sizeof(*m), GFP_KERNEL);
+	if (!m)
+		return -ENOMEM;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 18, 0)
+	fsnotify_init_mark(m, g);
+	m->mask = mask;
+	ret = fsnotify_add_inode_mark(m, inode, 0);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
+	fsnotify_init_mark(m, g);
+	m->mask = mask;
+	ret = fsnotify_add_mark(m, inode, NULL, 0);
+#else
+	fsnotify_init_mark(m, m_free);
+	m->mask = mask;
+	ret = fsnotify_add_mark(m, g, inode, NULL, 0);
 #endif
 
-static int add_mark_on_inode(struct inode *inode, u32 mask, struct fsnotify_mark **out)
-{
-    struct fsnotify_mark *m;
-
-    m = kzalloc(sizeof(*m), GFP_KERNEL);
-    if (!m)
-        return -ENOMEM;
-
-    fsnotify_init_mark(m, g);
-    m->mask = mask;
-
-    if (fsnotify_add_inode_mark(m, inode, 0)) {
-        fsnotify_put_mark(m);
-        return -EINVAL;
-    }
-    *out = m;
-    return 0;
+	if (ret) {
+		fsnotify_put_mark(m);
+		return -EINVAL;
+	}
+	*out = m;
+	return 0;
 }
 
 static int watch_one_dir(struct watch_dir *wd)
 {
-    int ret = kern_path(wd->path, LOOKUP_FOLLOW, &wd->kpath);
-    if (ret) {
-        pr_info("path not ready: %s (%d)\n", wd->path, ret);
-        return ret;
-    }
-    wd->inode = d_inode(wd->kpath.dentry);
-    ihold(wd->inode);
+	int ret = kern_path(wd->path, LOOKUP_FOLLOW, &wd->kpath);
+	if (ret) {
+		pr_info("path not ready: %s (%d)\n", wd->path, ret);
+		return ret;
+	}
+	wd->inode = d_inode(wd->kpath.dentry);
+	ihold(wd->inode);
 
-    ret = add_mark_on_inode(wd->inode, wd->mask, &wd->mark);
-    if (ret) {
-        pr_err("Add mark failed for %s (%d)\n", wd->path, ret);
-        path_put(&wd->kpath);
-        iput(wd->inode);
-        wd->inode = NULL;
-        return ret;
-    }
-    pr_info("watching %s\n", wd->path);
-    return 0;
+	ret = add_mark_on_inode(wd->inode, wd->mask, &wd->mark);
+	if (ret) {
+		pr_err("Add mark failed for %s (%d)\n", wd->path, ret);
+		path_put(&wd->kpath);
+		iput(wd->inode);
+		wd->inode = NULL;
+		return ret;
+	}
+	pr_info("watching %s\n", wd->path);
+	return 0;
 }
 
 static void unwatch_one_dir(struct watch_dir *wd)
 {
-    if (wd->mark) {
-        fsnotify_destroy_mark(wd->mark, g);
-        fsnotify_put_mark(wd->mark);
-        wd->mark = NULL;
-    }
-    if (wd->inode) {
-        iput(wd->inode);
-        wd->inode = NULL;
-    }
-    if (wd->kpath.dentry) {
-        path_put(&wd->kpath);
-        memset(&wd->kpath, 0, sizeof(wd->kpath));
-    }
+	if (wd->mark) {
+		fsnotify_destroy_mark(wd->mark, g);
+		fsnotify_put_mark(wd->mark);
+		wd->mark = NULL;
+	}
+	if (wd->inode) {
+		iput(wd->inode);
+		wd->inode = NULL;
+	}
+	if (wd->kpath.dentry) {
+		path_put(&wd->kpath);
+		memset(&wd->kpath, 0, sizeof(wd->kpath));
+	}
 }
 
-static struct watch_dir g_watch = { .path = "/data/system", .mask = MASK_SYSTEM };
+static struct watch_dir g_watch = { .path = "/data/system",
+				    .mask = MASK_SYSTEM };
+static struct watch_dir g_adb_watch = { .path = "/data/adb",
+					.mask = MASK_ADB };
 
 int ksu_observer_init(void)
 {
-    int ret = 0;
+	int ret = 0;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0)
-    g = fsnotify_alloc_group(&ksu_ops, 0);
+	g = fsnotify_alloc_group(&ksu_ops, 0);
 #else
-    g = fsnotify_alloc_group(&ksu_ops);
+	g = fsnotify_alloc_group(&ksu_ops);
 #endif
-    if (IS_ERR(g))
-        return PTR_ERR(g);
+	if (IS_ERR(g))
+		return PTR_ERR(g);
 
-    ret = watch_one_dir(&g_watch);
-    pr_info("observer init done\n");
-    return 0;
+	ret = watch_one_dir(&g_watch);
+	watch_one_dir(&g_adb_watch);
+	pr_info("observer init done\n");
+	return 0;
 }
 
 void __exit ksu_observer_exit(void)
 {
-    unwatch_one_dir(&g_watch);
-    fsnotify_put_group(g);
-    pr_info("observer exit done\n");
+	unwatch_one_dir(&g_adb_watch);
+	unwatch_one_dir(&g_watch);
+	fsnotify_put_group(g);
+	pr_info("observer exit done\n");
 }

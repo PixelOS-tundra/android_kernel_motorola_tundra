@@ -1,4 +1,5 @@
 #include <linux/bsearch.h>
+#include "compat/kernel_compat.h"
 #include <linux/kallsyms.h>
 #include <linux/module.h>
 #include <linux/mm.h>
@@ -7,6 +8,11 @@
 #include <linux/sort.h>
 #include <linux/string.h>
 #include <linux/version.h>
+
+// __nocfi is an arm64-only attribute; make it a no-op elsewhere
+#ifndef __nocfi
+#define __nocfi
+#endif
 
 #include "infra/symbol_resolver.h"
 

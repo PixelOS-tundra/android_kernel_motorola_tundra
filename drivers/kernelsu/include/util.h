@@ -13,12 +13,12 @@
 
 #include "arch.h"
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
+
 #if defined(__aarch64__)
 #define KSU_SYS_PREFIX(name) __arm64_sys_##name
 #elif defined(__x86_64__)
 #define KSU_SYS_PREFIX(name) __x64_sys_##name
-#elif defined(__riscv)
-#define KSU_SYS_PREFIX(name) __riscv_sys_##name
 #else // wire up your arch here.
 static_assert(1 == 0, "Unsupported architecture!");
 #define KSU_SYS_PREFIX(name) sys_##name
@@ -34,7 +34,7 @@ static_assert(1 == 0, "Unsupported architecture!");
     ({                                                                                                                 \
         extern long KSU_SYS_PREFIX(name)(const struct pt_regs *);                                                      \
         struct pt_regs __ksu_regs = { 0 };                                                                             \
-        PT_REGS_SYSCALL_PARM1(&__ksu_regs) = (unsigned long)(a);                                                       \
+        PT_REGS_PARM1(&__ksu_regs) = (unsigned long)(a);                                                               \
         PT_REGS_PARM2(&__ksu_regs) = (unsigned long)(b);                                                               \
         PT_REGS_PARM3(&__ksu_regs) = (unsigned long)(c);                                                               \
         PT_REGS_SYSCALL_PARM4(&__ksu_regs) = (unsigned long)(d);                                                       \
@@ -58,16 +58,53 @@ static_assert(1 == 0, "Unsupported architecture!");
 #define __ksyscall_exp(func, arg) __ksyscall_concat(func, arg)
 #define ksyscall(...) __ksyscall_exp(ksyscall_, __ksyscall_count_args(__VA_ARGS__))(__VA_ARGS__)
 
-static inline void __user *userspace_stack_buffer(const void *d, size_t len)
-{
-    // To avoid having to mmap a page in userspace, just write below the stack
-    // pointer.
-    char __user *p = (void __user *)current_user_stack_pointer() - len;
+#define ksu_close_fd(fd)                                                                                               \
+    ({                                                                                                                 \
+        (void)(fd);                                                                                                    \
+        ksyscall(close, fd);                                                                                           \
+    })
+#define ksu_sys_setns(fd, flags)                                                                                       \
+    ({                                                                                                                 \
+        ksyscall(setns, fd, flags);                                                                                    \
+    })
+#define ksu_sys_unshare(flags)                                                                                         \
+    ({                                                                                                                 \
+        ksyscall(unshare, flags);                                                                                      \
+    })
 
-    return copy_to_user(p, d, len) ? NULL : p;
+#else // LINUX_VERSION_CODE < 4.17, native syscall ABI
+
+#define ksu_close_fd(fd)                                                                                               \
+    ({                                                                                                                 \
+        if (current->files)                                                                                            \
+            __close_fd(current->files, fd);                                                                            \
+        0;                                                                                                             \
+    })
+
+static inline long ksu_sys_unshare(unsigned long flags)
+{
+	return sys_unshare(flags);
 }
 
-#define ksu_close_fd(fd) ({ ksyscall(close, fd); })
+#define ksu_sys_setns(fd, flags)                                                                                       \
+    ({                                                                                                                 \
+        sys_setns(fd, flags);                                                                                          \
+    })
+
+#endif
+
+static void __user *userspace_stack_buffer(const void *d, size_t len)
+{
+	// Stack Pointer must be 16-byte aligned.
+	// We also subtract a safe margin (256 bytes) 
+	// to avoid corrupting local variables or smth
+	unsigned long sp = current_user_stack_pointer();
+	sp = (sp - len - 256) & ~0xFUL; // Align downwards to nearest 16 bytes
+
+	char __user *p = (char __user *)sp;
+
+	return copy_to_user(p, d, len) ? NULL : p;
+}
 
 static inline struct file *ksu_filp_open_nonotify(const char *path, int flags)
 {

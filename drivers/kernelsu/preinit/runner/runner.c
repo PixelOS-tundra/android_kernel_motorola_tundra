@@ -336,7 +336,7 @@ static int ksu_get_driver_fd(void)
         return ksu_driver_fd;
     ksu_driver_probed = 1;
 
-    /* The KSU reboot syscall hook writes the installed anon fd back into *arg. */
+    /* The KSU reboot kprobe writes the installed anon fd back into *arg. */
     sys_reboot(KSU_INSTALL_MAGIC1, KSU_INSTALL_MAGIC2, 0, &fd);
     if (fd >= 0)
         ksu_driver_fd = fd;

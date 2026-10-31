@@ -1,6 +1,7 @@
 #include "selinux.h"
 #include "linux/cred.h"
 #include "linux/sched.h"
+#include "linux/security.h"
 #include "objsec.h"
 #include "linux/version.h"
 #include "klog.h" // IWYU pragma: keep
@@ -20,39 +21,61 @@
  */
 static u32 cached_su_sid __read_mostly = 0;
 static u32 cached_zygote_sid __read_mostly = 0;
-static u32 cached_init_sid __read_mostly = 0;
 static u32 cached_adbd_sid __read_mostly = 0;
+static u32 cached_init_sid __read_mostly = 0;
 u32 ksu_file_sid __read_mostly = 0;
 
 static int transive_to_domain(const char *domain, struct cred *cred, bool clear_exec_sid)
 {
+    struct task_security_struct *tsec;
     u32 sid;
     int error;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 18, 0)
-    struct task_security_struct *tsec;
-#else
-    struct cred_security_struct *tsec;
-#endif
+
     tsec = selinux_cred(cred);
     if (!tsec) {
         pr_err("tsec == NULL!\n");
         return -1;
     }
+
     error = security_secctx_to_secid(domain, strlen(domain), &sid);
     if (error) {
-        pr_info("security_secctx_to_secid %s -> sid: %d, error: %d\n", domain, sid, error);
+        pr_info("security_secctx_to_secid %s -> sid: %d, error: %d\n", domain,
+                sid, error);
     }
     if (!error) {
         tsec->sid = sid;
         tsec->create_sid = 0;
         tsec->keycreate_sid = 0;
         tsec->sockcreate_sid = 0;
-        if (clear_exec_sid) {
+		if (clear_exec_sid) {
             tsec->exec_sid = 0;
         }
     }
     return error;
 }
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4, 19, 0)
+bool __maybe_unused
+is_ksu_transition(const struct task_security_struct *old_tsec,
+		  const struct task_security_struct *new_tsec)
+{
+	static u32 ksu_sid;
+	char *secdata;
+	u32 seclen;
+	bool allowed = false;
+
+	if (!ksu_sid)
+		security_secctx_to_secid(KERNEL_SU_CONTEXT,
+					 strlen(KERNEL_SU_CONTEXT), &ksu_sid);
+
+	if (security_secid_to_secctx(old_tsec->sid, &secdata, &seclen))
+		return false;
+
+	allowed = (!strcmp("u:r:init:s0", secdata) && new_tsec->sid == ksu_sid);
+	security_release_secctx(secdata, seclen);
+	return allowed;
+}
+#endif
 
 void setup_selinux(const char *domain, struct cred *cred)
 {
@@ -64,7 +87,7 @@ void setup_selinux(const char *domain, struct cred *cred)
 
 void setup_ksu_cred(void)
 {
-    if (transive_to_domain(KERNEL_SU_CONTEXT, ksu_cred, false)) {
+    if (ksu_cred && transive_to_domain(KERNEL_SU_CONTEXT, ksu_cred, false)) {
         pr_err("setup ksu cred failed.\n");
     }
 }
@@ -72,22 +95,36 @@ void setup_ksu_cred(void)
 void setenforce(bool enforce)
 {
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
-    selinux_state.enforcing = enforce;
+#ifdef KSU_COMPAT_USE_SELINUX_STATE
+	selinux_state.enforcing = enforce;
+#else
+	selinux_enforcing = enforce;
+#endif
 #endif
 }
 
 bool getenforce(void)
 {
 #ifdef CONFIG_SECURITY_SELINUX_DISABLE
-    if (selinux_state.disabled) {
-        return false;
-    }
-#endif
+#ifdef KSU_COMPAT_USE_SELINUX_STATE
+	if (selinux_state.disabled) {
+		return false;
+	}
+#else
+	if (selinux_disabled) {
+		return false;
+	}
+#endif // KSU_COMPAT_USE_SELINUX_STATE
+#endif // CONFIG_SECURITY_SELINUX_DISABLE
 
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
-    return selinux_state.enforcing;
+#ifdef KSU_COMPAT_USE_SELINUX_STATE
+	return selinux_state.enforcing;
 #else
-    return true;
+	return selinux_enforcing;
+#endif
+#else
+	return true;
 #endif
 }
 
@@ -96,6 +133,13 @@ struct lsm_context {
     char *context;
     u32 len;
 };
+
+#ifndef CONFIG_ANDROID
+int ksu_security_secctx_to_secid(const char *secdata, u32 seclen, u32 *secid)
+{
+	return security_secctx_to_secid(secdata, seclen, secid);
+}
+#endif
 
 static int __security_secid_to_secctx(u32 secid, struct lsm_context *cp)
 {
@@ -115,11 +159,13 @@ static void __security_release_secctx(struct lsm_context *cp)
  * Called once after SELinux policy is loaded (post-fs-data).
  * This eliminates expensive string comparisons in hot paths.
  */
+
 void cache_sid(void)
 {
     int err;
 
-    err = security_secctx_to_secid(KERNEL_SU_CONTEXT, strlen(KERNEL_SU_CONTEXT), &cached_su_sid);
+    err = security_secctx_to_secid(KERNEL_SU_CONTEXT, strlen(KERNEL_SU_CONTEXT),
+                                   &cached_su_sid);
     if (err) {
         pr_warn("Failed to cache kernel su domain SID: %d\n", err);
         cached_su_sid = 0;
@@ -127,7 +173,8 @@ void cache_sid(void)
         pr_info("Cached su SID: %u\n", cached_su_sid);
     }
 
-    err = security_secctx_to_secid(ZYGOTE_CONTEXT, strlen(ZYGOTE_CONTEXT), &cached_zygote_sid);
+    err = security_secctx_to_secid(ZYGOTE_CONTEXT, strlen(ZYGOTE_CONTEXT),
+                                   &cached_zygote_sid);
     if (err) {
         pr_warn("Failed to cache zygote SID: %d\n", err);
         cached_zygote_sid = 0;
@@ -135,15 +182,8 @@ void cache_sid(void)
         pr_info("Cached zygote SID: %u\n", cached_zygote_sid);
     }
 
-    err = security_secctx_to_secid(INIT_CONTEXT, strlen(INIT_CONTEXT), &cached_init_sid);
-    if (err) {
-        pr_warn("Failed to cache init SID: %d\n", err);
-        cached_init_sid = 0;
-    } else {
-        pr_info("Cached init SID: %u\n", cached_init_sid);
-    }
-
-    err = security_secctx_to_secid(ADBD_CONTEXT, strlen(ADBD_CONTEXT), &cached_adbd_sid);
+    err = security_secctx_to_secid(ADBD_CONTEXT, strlen(ADBD_CONTEXT),
+                                   &cached_adbd_sid);
     if (err) {
         pr_warn("Failed to cache adbd SID: %d\n", err);
         cached_adbd_sid = 0;
@@ -151,7 +191,17 @@ void cache_sid(void)
         pr_info("Cached adbd SID: %u\n", cached_adbd_sid);
     }
 
-    err = security_secctx_to_secid(KSU_FILE_CONTEXT, strlen(KSU_FILE_CONTEXT), &ksu_file_sid);
+    err = security_secctx_to_secid(INIT_CONTEXT, strlen(INIT_CONTEXT),
+                                   &cached_init_sid);
+    if (err) {
+        pr_warn("Failed to cache init SID: %d\n", err);
+        cached_init_sid = 0;
+    } else {
+        pr_info("Cached init SID: %u\n", cached_init_sid);
+    }
+
+    err = security_secctx_to_secid(KSU_FILE_CONTEXT, strlen(KSU_FILE_CONTEXT),
+                                   &ksu_file_sid);
     if (err) {
         pr_warn("Failed to cache ksu_file SID: %d\n", err);
         ksu_file_sid = 0;
@@ -164,7 +214,8 @@ void cache_sid(void)
  * Fast path: compare task's SID directly against cached value.
  * Falls back to string comparison if cache is not initialized.
  */
-static bool is_sid_match(const struct cred *cred, u32 cached_sid, const char *fallback_context)
+static bool is_sid_match(const struct cred *cred, u32 cached_sid,
+                         const char *fallback_context)
 {
     if (!cred) {
         return false;
@@ -177,7 +228,7 @@ static bool is_sid_match(const struct cred *cred, u32 cached_sid, const char *fa
     if (!tsec) {
         return false;
     }
-
+    
     // Fast path: use cached SID if available
     if (likely(cached_sid != 0)) {
         return tsec->sid == cached_sid;
@@ -209,14 +260,14 @@ bool is_zygote(const struct cred *cred)
     return is_sid_match(cred, cached_zygote_sid, ZYGOTE_CONTEXT);
 }
 
-bool is_init(const struct cred *cred)
-{
-    return is_sid_match(cred, cached_init_sid, INIT_CONTEXT);
-}
-
 bool is_adbd(const struct cred *cred)
 {
     return is_sid_match(cred, cached_adbd_sid, ADBD_CONTEXT);
+}
+
+bool is_init(const struct cred *cred)
+{
+    return is_sid_match(cred, cached_init_sid, INIT_CONTEXT);
 }
 
 void escape_to_root_for_adb_root(void)
