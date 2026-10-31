@@ -5300,7 +5300,7 @@ static int msm_pcie_get_clk(struct msm_pcie_dev_t *pcie_dev)
 {
 	struct platform_device *pdev = pcie_dev->pdev;
 	struct device_node *of_node = pdev->dev.of_node;
-	const char *legacy_pipe = NULL, *legacy_ref = NULL;
+	const char *legacy_pipe = NULL, *legacy_ref = NULL, *legacy_ldo = NULL;
 	u32 *clk_freq = NULL, *clk_suppressible = NULL;
 	u32 legacy_ref_freq = 0;
 	int ret, i, total_num_clk;
@@ -5335,7 +5335,16 @@ static int msm_pcie_get_clk(struct msm_pcie_dev_t *pcie_dev)
 		legacy_ref = devm_kasprintf(&pdev->dev, GFP_KERNEL,
 					    "pcie_%d_ref_clk_src",
 					    pcie_dev->rc_idx);
-		if (!legacy_pipe || !legacy_ref)
+		/*
+		 * The 5.4 driver marked only pcie_N_ldo (the CLKREF_EN gate) as
+		 * suppressible: it stays on across DRV suspend and is gated by
+		 * hardware at XO shutdown. Turning it off with the link handed to
+		 * the DRV leaves the endpoint without a reference clock, and the
+		 * QCA6490 firmware asserts on the next L1 exit.
+		 */
+		legacy_ldo = devm_kasprintf(&pdev->dev, GFP_KERNEL,
+					    "pcie_%d_ldo", pcie_dev->rc_idx);
+		if (!legacy_pipe || !legacy_ref || !legacy_ldo)
 			return -ENOMEM;
 
 		of_property_read_u32_index(of_node, "max-clock-frequency-hz",
@@ -5413,6 +5422,8 @@ static int msm_pcie_get_clk(struct msm_pcie_dev_t *pcie_dev)
 			clk->name = "pcie_pipe_clk";
 		else if (legacy && !strcmp(clk->name, legacy_ref))
 			clk->freq = legacy_ref_freq;
+		else if (legacy && !strcmp(clk->name, legacy_ldo))
+			clk->suppressible = true;
 
 		PCIE_DBG(pcie_dev,
 			 "PCIe: RC%d: %s: frequency: %d: suppressible: %d\n",
