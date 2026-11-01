@@ -190,6 +190,13 @@ void cnss_pci_update_drv_supported(struct cnss_pci_data *pci_priv)
 						      "qcom,drv-name");
 	}
 
+	/*
+	 * TEST k61: run WLAN without PCIe DRV. Every 6.1 hang so far follows
+	 * the first link wake after a DRV hand-back; without DRV, system
+	 * suspend takes the link down instead (MSM_PCIE_SUSPEND).
+	 */
+	drv_supported = false;
+
 	cnss_pr_dbg("PCIe DRV is %s\n",
 		    drv_supported ? "supported" : "not supported");
 	pci_priv->drv_supported = drv_supported;
