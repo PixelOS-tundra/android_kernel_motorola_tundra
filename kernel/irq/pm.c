@@ -12,6 +12,9 @@
 #include <linux/syscore_ops.h>
 
 #include "internals.h"
+#include <linux/console.h>
+
+extern bool k61_trace_resume_irqs;
 
 bool irq_pm_check_wakeup(struct irq_desc *desc)
 {
@@ -195,10 +198,26 @@ static void resume_irqs(bool want_early)
 		if (irq_settings_is_nested_thread(desc))
 			continue;
 
+		/* DEBUG k61: name every suspended IRQ before it is resumed */
+		if (READ_ONCE(k61_trace_resume_irqs) &&
+		    (desc->istate & IRQS_SUSPENDED)) {
+			struct irq_chip *chip = irq_desc_get_chip(desc);
+
+			pr_info("k61dbg: resume irq %d hw %lu %s chip %s depth %u\n",
+				irq, desc->irq_data.hwirq,
+				desc->action && desc->action->name ?
+				desc->action->name : "?",
+				chip && chip->name ? chip->name : "?",
+				desc->depth);
+			console_lock();
+			console_unlock();
+		}
 		raw_spin_lock_irqsave(&desc->lock, flags);
 		resume_irq(desc);
 		raw_spin_unlock_irqrestore(&desc->lock, flags);
 	}
+	if (READ_ONCE(k61_trace_resume_irqs))
+		pr_info("k61dbg: resume irqs loop done (early %d)\n", want_early);
 }
 
 /**
