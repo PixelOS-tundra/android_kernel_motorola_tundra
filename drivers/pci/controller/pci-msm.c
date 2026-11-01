@@ -47,6 +47,7 @@
 #include <soc/qcom/crm.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
 #include <linux/console.h>
+#include <linux/kthread.h>
 #include <soc/qcom/pcie-pdc.h>
 #include <linux/random.h>
 #include <linux/pci-ecam.h>
@@ -11864,6 +11865,65 @@ static void k61_parf_watch(struct msm_pcie_dev_t *d)
 #pragma push_macro("PCIE_DBG")
 #undef PCIE_DBG
 #define PCIE_DBG(dev, fmt, arg...) pr_info("k61dbg: %s: " fmt, __func__, ##arg)
+/* DEBUG k61: sidecar watcher on another CPU during the post-DRV exit */
+static int k6x_sidecar_fn(void *data)
+{
+	void __iomem *g = ioremap(0x16b030, 4);	/* gcc_pcie_0_pipe_clk CBCR */
+	void __iomem *r = ioremap(0x18c004, 4);	/* gcc_pcie_0_clkref_en */
+	void __iomem *t = ioremap(0x0f15f000, 4);	/* TLMM GPIO 95 ctl */
+	u64 t0 = ktime_get_ns(), now, hb = 0;
+	u32 a, b, c, la = ~0U, lb = ~0U, lc = ~0U;
+	unsigned int n = 0;
+
+	if (!g || !r || !t)
+		goto out;
+	pr_info("k61dbg: sc start cpu%d\n", raw_smp_processor_id());
+	while ((now = ktime_get_ns()) - t0 < 300 * NSEC_PER_MSEC) {
+		a = readl_relaxed(g);
+		b = readl_relaxed(r);
+		c = readl_relaxed(t);
+		if (a != la || b != lb || c != lc || now - hb >= NSEC_PER_MSEC) {
+			pr_info("k61dbg: sc %u +%lluus pipe 0x%x clkref 0x%x tlmm 0x%x\n",
+				n, (now - t0) / 1000, a, b, c);
+			la = a;
+			lb = b;
+			lc = c;
+			hb = now;
+		}
+		n++;
+		udelay(20);
+	}
+	pr_info("k61dbg: sc end\n");
+out:
+	if (g)
+		iounmap(g);
+	if (r)
+		iounmap(r);
+	if (t)
+		iounmap(t);
+	return 0;
+}
+
+static void k6x_sidecar_start(void)
+{
+	static unsigned int runs;
+	struct task_struct *tsk;
+	int cpu, me = raw_smp_processor_id();
+
+	if (runs >= 3)
+		return;
+	for (cpu = (me + 4) % nr_cpu_ids; cpu == me || !cpu_online(cpu);
+	     cpu = (cpu + 1) % nr_cpu_ids)
+		;
+	tsk = kthread_create(k6x_sidecar_fn, NULL, "k6xsc");
+	if (IS_ERR(tsk))
+		return;
+	runs++;
+	kthread_bind(tsk, cpu);
+	sched_set_fifo(tsk);
+	wake_up_process(tsk);
+}
+
 static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 {
 	pr_info("k61dbg: drv_resume enter rc%d drv_enabled %d\n", pcie_dev->rc_idx,
@@ -12063,6 +12123,8 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 			 TO_LTSSM_STR(val & MSM_PCIE_LTSSM_MASK));
 
 	PCIE_DBG(pcie_dev, "drv_resume done speed %d ret %d LTSSM 0x%x\n", pcie_dev->current_link_speed, ret, val);
+	if (!pcie_dev->rc_idx)
+		k6x_sidecar_start();
 	k61_drv_trace = true;
 	K61T("drv_resume: trace window open\n");
 	mutex_unlock(&pcie_dev->setup_lock);
