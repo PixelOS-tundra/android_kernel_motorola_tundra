@@ -4204,9 +4204,24 @@ int cnss_pci_suspend_bus(struct cnss_pci_data *pci_priv)
 	cnss_set_pci_config_space(pci_priv, SAVE_PCI_CONFIG_SPACE);
 	pci_disable_device(pci_dev);
 
+	/* DEBUG k61: PME state around D3hot (no-DRV suspend WAKE# abort) */
+	if (pci_dev->pm_cap) {
+		u16 pmcsr = 0;
+
+		pci_read_config_word(pci_dev, pci_dev->pm_cap + PCI_PM_CTRL, &pmcsr);
+		pr_info("k61dbg: cnss pre-D3hot pmcsr 0x%x pme_support 0x%x may_wakeup %d wakeup_prepared %d\n",
+			pmcsr, pci_dev->pme_support,
+			device_may_wakeup(&pci_dev->dev), pci_dev->wakeup_prepared);
+	}
 	ret = pci_set_power_state(pci_dev, PCI_D3hot);
 	if (ret)
 		cnss_pr_err("Failed to set D3Hot, err = %d\n", ret);
+	if (pci_dev->pm_cap) {
+		u16 pmcsr = 0;
+
+		pci_read_config_word(pci_dev, pci_dev->pm_cap + PCI_PM_CTRL, &pmcsr);
+		pr_info("k61dbg: cnss D3hot pmcsr 0x%x\n", pmcsr);
+	}
 
 skip_disable_pci:
 	if (cnss_set_pci_link(pci_priv, PCI_LINK_DOWN)) {

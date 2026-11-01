@@ -1696,6 +1696,25 @@ static void msm_pcie_config_perst(struct msm_pcie_dev_t *dev, bool assert)
 			    dev->rc_idx);
 		gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
 				    dev->gpio[MSM_PCIE_GPIO_PERST].on);
+		/* DEBUG k61: WAKE# level for 20 ms after PERST (no-DRV suspend) */
+		if (!dev->rc_idx && dev->gpio[MSM_PCIE_GPIO_WAKE].num) {
+			static unsigned int runs;
+			int w, lw = -1, n = 0;
+			u64 t0 = ktime_get_ns(), now;
+
+			if (runs++ < 12) {
+				while ((now = ktime_get_ns()) - t0 < 20 * NSEC_PER_MSEC) {
+					w = gpio_get_value(dev->gpio[MSM_PCIE_GPIO_WAKE].num);
+					if (w != lw && n++ < 16)
+						pr_info("k61dbg: perst wake# %d at +%lluus\n",
+							w, (now - t0) / 1000);
+					lw = w;
+					udelay(20);
+				}
+				pr_info("k61dbg: perst wake# end level %d, %d changes\n",
+					lw, n);
+			}
+		}
 	} else {
 		PCIE_INFO(dev, "PCIe: RC%d: de-assert PERST\n",
 			    dev->rc_idx);
@@ -8281,8 +8300,10 @@ static irqreturn_t handle_wake_irq(int irq, void *data)
 	spin_lock_irqsave(&dev->irq_lock, irqsave_flags);
 
 	dev->wake_counter++;
-	pr_info("k61dbg: pcie wake irq rc%d link_status %d suspending %d\n",
-		dev->rc_idx, dev->link_status, dev->suspending);
+	pr_info("k61dbg: pcie wake irq rc%d link_status %d suspending %d level %d\n",
+		dev->rc_idx, dev->link_status, dev->suspending,
+		dev->gpio[MSM_PCIE_GPIO_WAKE].num ?
+		gpio_get_value(dev->gpio[MSM_PCIE_GPIO_WAKE].num) : -1);
 	PCIE_DBG(dev, "PCIe: No. %ld wake IRQ for RC%d\n",
 			dev->wake_counter, dev->rc_idx);
 
