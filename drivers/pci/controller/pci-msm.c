@@ -11945,6 +11945,9 @@ static void k6x_sidecar_start(void)
 	wake_up_process(tsk);
 }
 
+/* TEST k61: AP keeps its PCIe0 votes while DRV owns the link */
+static bool k61_keep_votes = true;
+
 static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 {
 	pr_info("k61dbg: drv_resume enter rc%d drv_enabled %d\n", pcie_dev->rc_idx,
@@ -11964,6 +11967,8 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 					&drv_info->drv_disable_l1ss_sleep);
 
 	PCIE_DBG(pcie_dev, "rpmsg l1ss done %d, vreg_init\n", rpmsg_ret);
+	if (k61_keep_votes && !pcie_dev->rc_idx)
+		goto k61_votes_kept;
 	msm_pcie_vreg_init(pcie_dev);
 
 	PCIE_DBG(pcie_dev, "PCIe: RC%d:enable gdsc-core\n", pcie_dev->rc_idx);
@@ -12001,6 +12006,7 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 	PCIE_DBG(pcie_dev, "PCIe: RC%d:turn on unsuppressible clks Done.\n",
 		pcie_dev->rc_idx);
 
+k61_votes_kept:
 	msm_pcie_cesta_disable_drv(pcie_dev);
 
 	PCIE_DBG(pcie_dev, "read PARF CLKREQ_OVERRIDE\n");
@@ -12064,7 +12070,8 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 
 	clk_info = pcie_dev->pipe_clk;
 	for (i = 0; i < pcie_dev->num_pipe_clk; i++, clk_info++) {
-		if (clk_info->hdl && !clk_info->suppressible) {
+		if (clk_info->hdl && !clk_info->suppressible &&
+		    !(k61_keep_votes && !pcie_dev->rc_idx)) {
 			ret = clk_prepare_enable(clk_info->hdl);
 			if (ret)
 				PCIE_DBG(pcie_dev,
@@ -12212,6 +12219,11 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 		ib = ICC_PEAK_BW;
 	}
 
+	if (k61_keep_votes && !pcie_dev->rc_idx) {
+		pr_info("k61dbg: drv_suspend: AP votes kept\n");
+		goto k61_votes_kept_off;
+	}
+
 	/* turn off all unsuppressible clocks */
 	clk_info = pcie_dev->pipe_clk;
 	for (i = 0; i < pcie_dev->num_pipe_clk; i++, clk_info++)
@@ -12239,6 +12251,7 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 
 	msm_pcie_vreg_deinit(pcie_dev);
 
+k61_votes_kept_off:
 	/*
 	 * Enable L1ss sleep if the client allows it, only after the APPS
 	 * votes (clocks, ICC, GDSC, regulators) are gone, as 5.4 does. Sent
