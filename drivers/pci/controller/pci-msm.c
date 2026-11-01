@@ -12108,18 +12108,6 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 
 	/* if DRV hand-off was done and DRV subsystem is powered up */
 	if (PCIE_RC_DRV_ENABLED(pcie_dev->rc_idx) && !rpmsg_ret) {
-		/*
-		 * TEST k61: no inbound EP traffic (DMA, MSI) across the hand-back,
-		 * until prevent_l1 has the link in L0. The apps clocks are on
-		 * again here, so DBI is reachable.
-		 */
-		if (!pcie_dev->rc_idx) {
-			msm_pcie_write_mask(pcie_dev->dm_core + PCI_COMMAND,
-					    PCI_COMMAND_MASTER, 0);
-			k61_bme_off = true;
-			pr_info("k61dbg: bme: root port BME off before drv_disable, CMD 0x%x\n",
-				readl_relaxed(pcie_dev->dm_core + PCI_COMMAND));
-		}
 		PCIE_DBG(pcie_dev, "send drv_disable\n");
 		msm_pcie_drv_send_rpmsg(pcie_dev,
 					&drv_info->drv_disable);
@@ -12210,8 +12198,21 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 	if (!pcie_dev->pcie_sm)
 		disable_irq(pcie_dev->irq[MSM_PCIE_INT_GLOBAL_INT].num);
 
+	/*
+	 * TEST k61: no inbound EP traffic (DMA, MSI) from the hand-off until
+	 * prevent_l1 has the link back in L0.
+	 */
+	if (!pcie_dev->rc_idx) {
+		msm_pcie_write_mask(pcie_dev->dm_core + PCI_COMMAND,
+				    PCI_COMMAND_MASTER, 0);
+		k61_bme_off = true;
+		pr_info("k61dbg: bme: root port BME off before drv_enable, CMD 0x%x\n",
+			readl_relaxed(pcie_dev->dm_core + PCI_COMMAND));
+	}
 	ret = msm_pcie_drv_send_rpmsg(pcie_dev, &drv_info->drv_enable);
 	if (ret) {
+		if (!pcie_dev->rc_idx)
+			k61_bme_restore(pcie_dev, "drv_enable failed");
 		ret = -EBUSY;
 		goto out;
 	}
