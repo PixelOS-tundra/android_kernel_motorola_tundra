@@ -17,6 +17,8 @@
 #include <linux/ctype.h>
 #include <linux/slab.h>
 #include <linux/mmi_device.h>
+#include <linux/workqueue.h>
+#include <linux/soc/qcom/smem.h>
 #include "mmi_info.h"
 
 struct mmi_chosen_info mmi_chosen_data;
@@ -217,18 +219,48 @@ static void mmi_of_populate_setup(void)
 	of_node_put(n);
 }
 
+/*
+ * The RAM info and the unit info item (SMEM_ID_VENDOR0, read by the modem
+ * and other remote processors) live in SMEM. The SMEM driver probes after
+ * its hwspinlock and returns -EPROBE_DEFER until then, which on 6.1 is
+ * after this initcall: wait for it instead of failing for good.
+ */
+#define MMI_SMEM_RETRY_MS	20
+#define MMI_SMEM_MAX_TRIES	500
+
+static void mmi_smem_info_fn(struct work_struct *work);
+static DECLARE_DELAYED_WORK(mmi_smem_info_work, mmi_smem_info_fn);
+static unsigned int mmi_smem_tries;
+
+static void mmi_smem_info_fn(struct work_struct *work)
+{
+	if (qcom_smem_get_free_space(QCOM_SMEM_HOST_ANY) == -EPROBE_DEFER) {
+		if (++mmi_smem_tries < MMI_SMEM_MAX_TRIES) {
+			schedule_delayed_work(&mmi_smem_info_work,
+				msecs_to_jiffies(MMI_SMEM_RETRY_MS));
+			return;
+		}
+		pr_err("mmi_info: SMEM not available, no RAM/unit info\n");
+		return;
+	}
+	pr_info("mmi_info: SMEM ready after %u retries\n", mmi_smem_tries);
+	mmi_ram_info_init();
+	mmi_unit_info_smem_init();
+}
+
 static int __init mmi_hw_info_init(void)
 {
 	mmi_of_populate_setup();
 	mmi_storage_info_init();
-	mmi_ram_info_init();
 	mmi_unit_info_init();
 	mmi_boot_info_init();
+	schedule_delayed_work(&mmi_smem_info_work, 0);
 	return 0;
 }
 
 static void mmi_hw_info_exit(void)
 {
+	cancel_delayed_work_sync(&mmi_smem_info_work);
 	mmi_storage_info_exit();
 	mmi_ram_info_exit();
 	mmi_unit_info_exit();

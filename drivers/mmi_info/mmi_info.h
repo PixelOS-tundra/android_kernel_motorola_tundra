@@ -19,6 +19,7 @@ void mmi_storage_info_exit(void);
 int mmi_ram_info_init(void);
 void mmi_ram_info_exit(void);
 int mmi_unit_info_init(void);
+int mmi_unit_info_smem_init(void);
 void mmi_unit_info_exit(void);
 int mmi_boot_info_init(void);
 void mmi_boot_info_exit(void);

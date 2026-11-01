@@ -184,10 +184,15 @@ static const struct file_operations unitinfo_operations = {
 };
 #endif
 
+/* called once SMEM is up, see mmi_info_main.c */
+int mmi_unit_info_smem_init(void)
+{
+	return mmi_unit_smem_setup();
+}
+
 int mmi_unit_info_init(void)
 {
 	mmi_bootarg_setup();
-	mmi_unit_smem_setup();
 
 	/* /proc/unitinfo */
 	unitinfo_procfs_file = proc_create("unitinfo",
