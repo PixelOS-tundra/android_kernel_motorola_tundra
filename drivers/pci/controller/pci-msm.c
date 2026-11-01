@@ -10374,7 +10374,7 @@ static void k6x_parf_drv(struct msm_pcie_dev_t *d)
 static void k6x_exit_probe(struct msm_pcie_dev_t *d)
 {
 	static unsigned int calls;
-	static void __iomem *g;
+	static void __iomem *g, *t;
 	u32 c, st, cm, lc = ~0U, ls = ~0U, lm = ~0U;
 	u64 t0;
 	unsigned int i;
@@ -10392,13 +10392,22 @@ static void k6x_exit_probe(struct msm_pcie_dev_t *d)
 	calls++;
 	t0 = ktime_get_ns();
 	K6XP("k6xexit: begin %u pipe_cbcr 0x%x\n", calls, c);
+	if (!t)
+		t = ioremap(0x0f15f000, 4);
 	for (i = 0; i < 50; i++) {
+		bool v = i < 30;
+
+		if (v)
+			K6XP("k6xexit: %u tick +%lluus\n", i,
+			     (ktime_get_ns() - t0) / 1000);
 		c = readl_relaxed(g);
-		if (!i)
-			K6XP("k6xexit: gcc read ok 0x%x\n", c);
+		if (v)
+			K6XP("k6xexit: %u gcc 0x%x\n", i, c);
+		if (v && t)
+			K6XP("k6xexit: %u tlmm 0x%x\n", i, readl_relaxed(t));
 		st = readl_relaxed(d->phy + 0x214);
 		cm = readl_relaxed(d->phy + 0x140);
-		if (c != lc || st != ls || cm != lm || !i || i == 49) {
+		if (v || c != lc || st != ls || cm != lm || i == 49) {
 			K6XP("k6xexit: %u +%lluus pipe_cbcr 0x%x pcs_status 0x%x com_140 0x%x\n",
 			     i, (ktime_get_ns() - t0) / 1000, c, st, cm);
 			lc = c;
