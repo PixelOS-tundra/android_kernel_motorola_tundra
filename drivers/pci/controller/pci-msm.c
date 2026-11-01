@@ -8437,8 +8437,6 @@ static irqreturn_t handle_linkdown_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-extern bool k61_drv_trace;
-
 static irqreturn_t handle_global_irq(int irq, void *data)
 {
 	int i;
@@ -8451,9 +8449,6 @@ static irqreturn_t handle_global_irq(int irq, void *data)
 	struct aer_err_source e_src = {};
 
 	spin_lock_irqsave(&dev->irq_lock, irqsave_flags);
-	/* DEBUG k61: does the global IRQ fire during the post-DRV L1.2 exit? */
-	if (k61_drv_trace)
-		pr_info("k61dbg: global irq entry rc%d\n", dev->rc_idx);
 
 	if (dev->suspending) {
 		PCIE_DBG2(dev,
@@ -10383,7 +10378,6 @@ static void k6x_exit_probe(struct msm_pcie_dev_t *d)
 	u32 c, st, cm, lc = ~0U, ls = ~0U, lm = ~0U;
 	u64 t0;
 	unsigned int i;
-	unsigned long flags;
 
 	if (d->rc_idx || calls >= 4)
 		return;
@@ -10400,23 +10394,21 @@ static void k6x_exit_probe(struct msm_pcie_dev_t *d)
 	K6XP("k6xexit: begin %u pipe_cbcr 0x%x\n", calls, c);
 	if (!t)
 		t = ioremap(0x0f15f000, 4);
-	/* TEST k6x: no interrupt can be taken on this CPU during the exit */
-	local_irq_save(flags);
 	for (i = 0; i < 50; i++) {
 		bool v = i < 30;
 
 		if (v)
-			pr_info("k61dbg: k6xexit: %u tick +%lluus\n", i,
+			K6XP("k6xexit: %u tick +%lluus\n", i,
 			     (ktime_get_ns() - t0) / 1000);
 		c = readl_relaxed(g);
 		if (v)
-			pr_info("k61dbg: k6xexit: %u gcc 0x%x\n", i, c);
+			K6XP("k6xexit: %u gcc 0x%x\n", i, c);
 		if (v && t)
-			pr_info("k61dbg: k6xexit: %u tlmm 0x%x\n", i, readl_relaxed(t));
+			K6XP("k6xexit: %u tlmm 0x%x\n", i, readl_relaxed(t));
 		st = readl_relaxed(d->phy + 0x214);
 		cm = readl_relaxed(d->phy + 0x140);
 		if (v || c != lc || st != ls || cm != lm || i == 49) {
-			pr_info("k61dbg: k6xexit: %u +%lluus pipe_cbcr 0x%x pcs_status 0x%x com_140 0x%x\n",
+			K6XP("k6xexit: %u +%lluus pipe_cbcr 0x%x pcs_status 0x%x com_140 0x%x\n",
 			     i, (ktime_get_ns() - t0) / 1000, c, st, cm);
 			lc = c;
 			ls = st;
@@ -10424,9 +10416,7 @@ static void k6x_exit_probe(struct msm_pcie_dev_t *d)
 		}
 		udelay(100);
 	}
-	pr_info("k61dbg: k6xexit: end, restoring IRQs\n");
-	local_irq_restore(flags);
-	K6XP("k6xexit: IRQs restored\n");
+	K6XP("k6xexit: end\n");
 }
 
 int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
