@@ -47,6 +47,7 @@
 #include <soc/qcom/crm.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
 #include <linux/console.h>
+#include <linux/stop_machine.h>
 #include <soc/qcom/pcie-pdc.h>
 #include <linux/random.h>
 #include <linux/pci-ecam.h>
@@ -10376,57 +10377,79 @@ static void k6x_parf_drv(struct msm_pcie_dev_t *d)
 #define K6XP(fmt, ...) K61T(fmt, ##__VA_ARGS__)
 
 /* DEBUG k6x: does the RC PHY power back up after the L1.2 exit request? */
-static void k6x_exit_probe(struct msm_pcie_dev_t *d)
-{
-	static unsigned int calls;
-	static void __iomem *g, *t;
-	u32 c, st, cm, lc = ~0U, ls = ~0U, lm = ~0U;
-	u64 t0;
-	unsigned int i;
-	unsigned long flags;
+static void __iomem *k6x_exit_g, *k6x_exit_t;
 
-	if (d->rc_idx || calls >= 4)
-		return;
-	if (!g)
-		g = ioremap(0x16b030, 4);
-	if (!g)
-		return;
-	/* only the PHY-down state: pipe clock reports CLK_OFF */
-	c = readl_relaxed(g);
-	if (!(c & BIT(31)))
-		return;
-	calls++;
-	t0 = ktime_get_ns();
-	K6XP("k6xexit: begin %u pipe_cbcr 0x%x\n", calls, c);
-	if (!t)
-		t = ioremap(0x0f15f000, 4);
-	/* TEST k6x: no interrupt can be taken on this CPU during the exit */
-	local_irq_save(flags);
+/* runs with every other CPU stopped and IRQs off everywhere */
+static int k6x_exit_sm_cb(void *data)
+{
+	struct msm_pcie_dev_t *d = data;
+	u32 c, st, cm, lt, lc = ~0U, ls = ~0U, lm = ~0U;
+	u64 t0 = ktime_get_ns();
+	unsigned int i;
+
+	msm_pcie_write_mask(d->parf + PCIE20_PARF_PM_CTRL, 0, BIT(5));
+	pr_info("k61dbg: k6xexit: sm PM_CTRL written +%lluus\n",
+		(ktime_get_ns() - t0) / 1000);
 	for (i = 0; i < 50; i++) {
 		bool v = i < 30;
 
 		if (v)
 			pr_info("k61dbg: k6xexit: %u tick +%lluus\n", i,
-			     (ktime_get_ns() - t0) / 1000);
-		c = readl_relaxed(g);
-		if (v)
-			pr_info("k61dbg: k6xexit: %u gcc 0x%x\n", i, c);
-		if (v && t)
-			pr_info("k61dbg: k6xexit: %u tlmm 0x%x\n", i, readl_relaxed(t));
+				(ktime_get_ns() - t0) / 1000);
+		c = readl_relaxed(k6x_exit_g);
+		if (v && k6x_exit_t)
+			pr_info("k61dbg: k6xexit: %u gcc 0x%x tlmm 0x%x\n", i, c,
+				readl_relaxed(k6x_exit_t));
 		st = readl_relaxed(d->phy + 0x214);
 		cm = readl_relaxed(d->phy + 0x140);
 		if (v || c != lc || st != ls || cm != lm || i == 49) {
 			pr_info("k61dbg: k6xexit: %u +%lluus pipe_cbcr 0x%x pcs_status 0x%x com_140 0x%x\n",
-			     i, (ktime_get_ns() - t0) / 1000, c, st, cm);
+				i, (ktime_get_ns() - t0) / 1000, c, st, cm);
 			lc = c;
 			ls = st;
 			lm = cm;
 		}
 		udelay(100);
 	}
-	pr_info("k61dbg: k6xexit: end, restoring IRQs\n");
-	local_irq_restore(flags);
-	K6XP("k6xexit: IRQs restored\n");
+	/* still alone on the bus: does the link reach L0? */
+	for (i = 0; i < 50; i++) {
+		lt = readl_relaxed(d->parf + PCIE20_PARF_LTSSM);
+		pr_info("k61dbg: k6xexit: L0 poll %u +%lluus LTSSM 0x%x\n", i,
+			(ktime_get_ns() - t0) / 1000, lt);
+		if ((lt & 0x3f) == 0x11)
+			break;
+		udelay(100);
+	}
+	pr_info("k61dbg: k6xexit: sm end\n");
+	return 0;
+}
+
+/*
+ * DEBUG/TEST k6x: from the PHY-down L1.2 state, request the L1 exit and
+ * probe it inside stop_machine(). Returns true if it ran (PM_CTRL written).
+ */
+static bool k6x_exit_probe(struct msm_pcie_dev_t *d)
+{
+	static unsigned int calls;
+	u32 c;
+
+	if (d->rc_idx || calls >= 4)
+		return false;
+	if (!k6x_exit_g)
+		k6x_exit_g = ioremap(0x16b030, 4);
+	if (!k6x_exit_t)
+		k6x_exit_t = ioremap(0x0f15f000, 4);
+	if (!k6x_exit_g)
+		return false;
+	/* only the PHY-down state: pipe clock reports CLK_OFF */
+	c = readl_relaxed(k6x_exit_g);
+	if (!(c & BIT(31)))
+		return false;
+	calls++;
+	K6XP("k6xexit: begin %u pipe_cbcr 0x%x, stop_machine\n", calls, c);
+	stop_machine(k6x_exit_sm_cb, d, NULL);
+	K6XP("k6xexit: stop_machine returned\n");
+	return true;
 }
 
 int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
@@ -10489,10 +10512,10 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 	K61T("prevent_l1: LTSSM 0x%x PM_STTS 0x%x, PARF PM_CTRL write\n",
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM),
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS));
-	msm_pcie_write_mask(pcie_dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(5));
-	K61T("prevent_l1: PM_CTRL written\n");
 	if (k61_l1sub)
 		k6x_exit_probe(pcie_dev);
+	msm_pcie_write_mask(pcie_dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(5));
+	K61T("prevent_l1: PM_CTRL written\n");
 	K61T("prevent_l1: poll L0, LTSSM 0x%x\n",
 		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
 
