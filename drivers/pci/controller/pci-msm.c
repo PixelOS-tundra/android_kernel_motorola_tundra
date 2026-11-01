@@ -10441,19 +10441,6 @@ static void k6x_exit_probe(struct msm_pcie_dev_t *d)
 	K6XP("k6xexit: end\n");
 }
 
-/* TEST k61: root port BME cleared across the DRV hand-off */
-static bool k61_bme_off;
-
-static void k61_bme_restore(struct msm_pcie_dev_t *d, const char *where)
-{
-	if (!k61_bme_off)
-		return;
-	msm_pcie_write_mask(d->dm_core + PCI_COMMAND, 0, PCI_COMMAND_MASTER);
-	k61_bme_off = false;
-	pr_info("k61dbg: bme: root port BME on (%s), CMD 0x%x\n", where,
-		readl_relaxed(d->dm_core + PCI_COMMAND));
-}
-
 int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 {
 	bool k61_l1sub = false;
@@ -10570,8 +10557,6 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 	}
 
 	K61T("prevent_l1: L0 after %u polls, DBI LNKCTL write\n", cnt);
-	if (!pcie_dev->rc_idx)
-		k61_bme_restore(pcie_dev, "prevent_l1 L0");
 	/* the controller (DBI) and the EP are reachable now: disable L1 there */
 	msm_pcie_write_mask(pcie_dev->dm_core +
 				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
@@ -12198,21 +12183,8 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 	if (!pcie_dev->pcie_sm)
 		disable_irq(pcie_dev->irq[MSM_PCIE_INT_GLOBAL_INT].num);
 
-	/*
-	 * TEST k61: no inbound EP traffic (DMA, MSI) from the hand-off until
-	 * prevent_l1 has the link back in L0.
-	 */
-	if (!pcie_dev->rc_idx) {
-		msm_pcie_write_mask(pcie_dev->dm_core + PCI_COMMAND,
-				    PCI_COMMAND_MASTER, 0);
-		k61_bme_off = true;
-		pr_info("k61dbg: bme: root port BME off before drv_enable, CMD 0x%x\n",
-			readl_relaxed(pcie_dev->dm_core + PCI_COMMAND));
-	}
 	ret = msm_pcie_drv_send_rpmsg(pcie_dev, &drv_info->drv_enable);
 	if (ret) {
-		if (!pcie_dev->rc_idx)
-			k61_bme_restore(pcie_dev, "drv_enable failed");
 		ret = -EBUSY;
 		goto out;
 	}
