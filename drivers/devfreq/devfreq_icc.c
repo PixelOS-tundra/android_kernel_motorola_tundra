@@ -221,7 +221,6 @@ int devfreq_add_icc(struct device *dev)
 	struct devfreq_dev_profile *p;
 	const char *gov_name;
 	int ret;
-	struct opp_table *opp_table;
 	u32 version;
 
 	d = devm_kzalloc(dev, sizeof(*d), GFP_KERNEL);
@@ -242,10 +241,10 @@ int devfreq_add_icc(struct device *dev)
 
 	if (of_device_is_compatible(dev->of_node, "qcom,devfreq-icc-ddr")) {
 		version = (1 << of_fdt_get_ddrtype());
-		opp_table = dev_pm_opp_get_opp_table(dev);
-		if (IS_ERR(opp_table)) {
+		ret = devm_pm_opp_set_supported_hw(dev, &version, 1);
+		if (ret) {
 			dev_err(dev, "Failed to set supported hardware\n");
-			return PTR_ERR(opp_table);
+			return ret;
 		}
 	}
 
