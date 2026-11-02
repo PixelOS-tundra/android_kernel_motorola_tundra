@@ -70,6 +70,12 @@ configs=$(sed -e '
 #
 # The format is <file-name>:<CONFIG-option> in each line.
 config_leak_ignores="
+techpack/audio/include/uapi/linux/msm-ds2-dap-config.h:CONFIG_DOLBY_DS2
+techpack/audio/include/uapi/linux/msm-ds2-dap-config.h:CONFIG_DOLBY_LICENSE
+techpack/camera/include/uapi/camera/media/cam_defs.h:CONFIG_MOT_SENSOR_PRE_POWERUP
+techpack/camera/include/uapi/camera/media/cam_sensor.h:CONFIG_CAMERA_CCI_ADDR_SWITCH
+techpack/camera/include/uapi/camera/media/cam_sensor.h:CONFIG_CAMERA_CCI_MASTER_CHANGE
+techpack/camera/include/uapi/camera/media/cam_sensor.h:CONFIG_CAMERA_SUB_DEVICE_PROBE
 arch/arc/include/uapi/asm/page.h:CONFIG_ARC_PAGE_SIZE_16K
 arch/arc/include/uapi/asm/page.h:CONFIG_ARC_PAGE_SIZE_4K
 arch/arc/include/uapi/asm/swab.h:CONFIG_ARC_HAS_SWAPE
