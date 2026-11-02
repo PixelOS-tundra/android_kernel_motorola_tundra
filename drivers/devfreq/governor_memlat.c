@@ -197,7 +197,6 @@ static int gov_start(struct devfreq *df)
 		goto err_sysfs;
 
 	mutex_lock(&df->lock);
-	df->min_freq = df->max_freq;
 	update_devfreq(df);
 	mutex_unlock(&df->lock);
 
@@ -421,7 +420,7 @@ static int devfreq_memlat_ev_handler(struct devfreq *df,
 		dev_dbg(df->dev.parent, "Resumed memlat governor\n");
 		break;
 
-	case DEVFREQ_GOV_INTERVAL:
+	case DEVFREQ_GOV_UPDATE_INTERVAL:
 		node = df->data;
 		hw = node->hw;
 		sample_ms = *(unsigned int *)data;
@@ -430,7 +429,7 @@ static int devfreq_memlat_ev_handler(struct devfreq *df,
 		if (hw->request_update_ms)
 			hw->request_update_ms(hw, sample_ms);
 		if (!hw->should_ignore_df_monitor)
-			devfreq_interval_update(df, &sample_ms);
+			devfreq_update_interval(df, &sample_ms);
 		break;
 	}
 
@@ -439,27 +438,19 @@ static int devfreq_memlat_ev_handler(struct devfreq *df,
 
 static struct devfreq_governor devfreq_gov_memlat = {
 	.name = "mem_latency",
-	.immutable = 1,
+	.attrs = DEVFREQ_GOV_ATTR_POLLING_INTERVAL,
+	.flags = DEVFREQ_GOV_FLAG_IMMUTABLE,
 	.get_target_freq = devfreq_memlat_get_freq,
 	.event_handler = devfreq_memlat_ev_handler,
 };
 
 static struct devfreq_governor devfreq_gov_compute = {
 	.name = "compute",
-	.immutable = 1,
+	.attrs = DEVFREQ_GOV_ATTR_POLLING_INTERVAL,
+	.flags = DEVFREQ_GOV_FLAG_IMMUTABLE,
 	.get_target_freq = devfreq_memlat_get_freq,
 	.event_handler = devfreq_memlat_ev_handler,
 };
-
-void memlat_set_immutable_flag(unsigned int flag)
-{
-	unsigned int *memlat_ptr = (unsigned int *)&devfreq_gov_memlat.immutable;
-	unsigned int *compute_ptr = (unsigned int *)&devfreq_gov_compute.immutable;
-
-	*memlat_ptr = flag;
-	*compute_ptr = flag;
-}
-EXPORT_SYMBOL(memlat_set_immutable_flag);
 
 #define NUM_COLS	2
 static struct core_dev_map *init_core_dev_map(struct device *dev,
