@@ -623,7 +623,6 @@ static int gov_start(struct devfreq *df)
 	}
 
 	mutex_lock(&df->lock);
-	df->scaling_min_freq = df->scaling_max_freq;
 	update_devfreq(df);
 	mutex_unlock(&df->lock);
 
@@ -949,7 +948,8 @@ out:
 
 static struct devfreq_governor devfreq_gov_bw_hwmon = {
 	.name = "bw_hwmon",
-	.flags = 1,
+	.attrs = DEVFREQ_GOV_ATTR_POLLING_INTERVAL,
+	.flags = DEVFREQ_GOV_FLAG_IMMUTABLE,
 	.get_target_freq = devfreq_bw_hwmon_get_freq,
 	.event_handler = devfreq_bw_hwmon_ev_handler,
 };
