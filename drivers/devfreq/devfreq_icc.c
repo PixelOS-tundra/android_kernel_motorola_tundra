@@ -269,15 +269,17 @@ int devfreq_add_icc(struct device *dev)
 	} else {
 		ret = dev_pm_opp_of_add_table(dev);
 	}
-	if (ret < 0)
+	if (ret < 0) {
 		dev_err(dev, "Couldn't parse OPP table:%d\n", ret);
+		return ret;
+	}
 
 	d->icc_path = of_icc_get(dev, NULL);
 	if (IS_ERR(d->icc_path)) {
 		ret = PTR_ERR(d->icc_path);
 		if (ret != -EPROBE_DEFER)
 			dev_err(dev, "Unable to register icc path: %d\n", ret);
-		return ret;
+		goto err_opp;
 	}
 
 	if (of_property_read_bool(dev->of_node, PROP_ACTIVE))
@@ -288,11 +290,20 @@ int devfreq_add_icc(struct device *dev)
 
 	d->df = devfreq_add_device(dev, p, gov_name, NULL);
 	if (IS_ERR(d->df)) {
+		ret = PTR_ERR(d->df);
 		icc_put(d->icc_path);
-		return PTR_ERR(d->df);
+		goto err_opp;
 	}
 
 	return 0;
+
+err_opp:
+	/* OPPs left behind make the retry after a deferred probe fail. */
+	if (d->spec->type == L3_HZ_DEV || d->spec->type == L3_MBPS_DEV)
+		dev_pm_opp_remove_all_dynamic(dev);
+	else
+		dev_pm_opp_of_remove_table(dev);
+	return ret;
 }
 
 int devfreq_remove_icc(struct device *dev)
