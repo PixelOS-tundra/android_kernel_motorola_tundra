@@ -871,6 +871,17 @@ static void msm_hsphy_vbus_draw_work(struct work_struct *w)
 		}
 	}
 
+	/*
+	 * The gadget's current only applies to a Standard Downstream Port.
+	 * On a USB PD source a bus suspend during enumeration would otherwise
+	 * set a 2 mA input limit, and the charger firmware then refuses any
+	 * other value until the next replug.
+	 */
+	ret = power_supply_get_property(phy->usb_psy, POWER_SUPPLY_PROP_USB_TYPE,
+					&val);
+	if (ret || val.intval != POWER_SUPPLY_USB_TYPE_SDP)
+		return;
+
 	dev_info(phy->phy.dev, "Avail curr from USB = %u\n", phy->vbus_draw);
 
 	/* Set max current limit in uA */
