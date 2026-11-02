@@ -205,8 +205,6 @@ static int sdpm_clk_device_probe(struct platform_device *pdev)
 		sdpm_csr_write(&sdpm_clk->clk_data[idx],
 				sdpm_clk->clk_data[idx].last_freq);
 		mutex_init(&sdpm_clk->clk_data[idx].sdpm_mutex);
-		clk_notifier_register(sdpm_clk->clk_data[idx].clk,
-					&sdpm_clk->clk_data[idx].clk_rate_nb);
 		sdpm_clk->clk_data[idx].reg = devm_regulator_get(dev,
 					sdpm_clk->clk_data[idx].clock_name);
 		if (IS_ERR(sdpm_clk->clk_data[idx].reg)) {
@@ -216,13 +214,20 @@ static int sdpm_clk_device_probe(struct platform_device *pdev)
 			if (PTR_ERR(sdpm_clk->clk_data[idx].reg)
 					== -EPROBE_DEFER)
 				return PTR_ERR(sdpm_clk->clk_data[idx].reg);
-		} else {
-			sdpm_clk->clk_data[idx].reg_nb.notifier_call =
-				sdpm_reg_notifier;
-			regulator_register_notifier(
-					sdpm_clk->clk_data[idx].reg,
-					&sdpm_clk->clk_data[idx].reg_nb);
+			sdpm_clk->clk_data[idx].reg = NULL;
 		}
+	}
+
+	/* Nothing can defer from here on: a deferred probe frees clk_data. */
+	for (idx = 0; idx < sdpm_clk->clk_ct; idx++) {
+		clk_notifier_register(sdpm_clk->clk_data[idx].clk,
+					&sdpm_clk->clk_data[idx].clk_rate_nb);
+		if (!sdpm_clk->clk_data[idx].reg)
+			continue;
+		sdpm_clk->clk_data[idx].reg_nb.notifier_call =
+			sdpm_reg_notifier;
+		regulator_register_notifier(sdpm_clk->clk_data[idx].reg,
+				&sdpm_clk->clk_data[idx].reg_nb);
 	}
 
 	return 0;
