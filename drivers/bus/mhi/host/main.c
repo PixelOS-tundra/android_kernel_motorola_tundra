@@ -471,9 +471,6 @@ irqreturn_t mhi_irq_handler(int irq_number, void *priv)
 	dma_addr_t ptr;
 	void *dev_rp;
 
-	if (mhi_cntrl->pm_state == MHI_PM_M3 || mhi_cntrl->pm_state == MHI_PM_M3_ENTER)
-		pr_info("k61dbg: mhi event irq %d in pm_state 0x%x\n", irq_number, mhi_cntrl->pm_state);
-
 	/*
 	 * If CONFIG_DEBUG_SHIRQ is set, the IRQ handler will get invoked during __free_irq()
 	 * and by that time mhi_ctxt() would've freed. So check for the existence of mhi_ctxt
@@ -537,8 +534,6 @@ irqreturn_t mhi_intvec_threaded_handler(int irq_number, void *priv)
 	enum mhi_pm_state pm_state = 0;
 	enum mhi_ee_type ee;
 
-	if (mhi_cntrl->pm_state == MHI_PM_M3 || mhi_cntrl->pm_state == MHI_PM_M3_ENTER)
-		pr_info("k61dbg: mhi intvec thread in pm_state 0x%x\n", mhi_cntrl->pm_state);
 	write_lock_irq(&mhi_cntrl->pm_lock);
 	if (!MHI_REG_ACCESS_VALID(mhi_cntrl->pm_state)) {
 		write_unlock_irq(&mhi_cntrl->pm_lock);
@@ -597,8 +592,6 @@ irqreturn_t mhi_intvec_handler(int irq_number, void *dev)
 {
 	struct mhi_controller *mhi_cntrl = dev;
 
-	if (mhi_cntrl->pm_state == MHI_PM_M3 || mhi_cntrl->pm_state == MHI_PM_M3_ENTER)
-		pr_info("k61dbg: mhi intvec irq in pm_state 0x%x\n", mhi_cntrl->pm_state);
 	/* Wake up events waiting for state change */
 	wake_up_all(&mhi_cntrl->state_event);
 

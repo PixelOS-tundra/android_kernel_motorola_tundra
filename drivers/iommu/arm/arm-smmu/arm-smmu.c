@@ -3842,10 +3842,6 @@ static int __maybe_unused arm_smmu_pm_resume(struct device *dev)
 	int ret;
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 
-	/* TEST k61: leave the apps SMMU alone across system suspend */
-	if (of_node_name_eq(dev->of_node, "apps-smmu"))
-		return 0;
-
 	ret = clk_bulk_prepare(smmu->num_clks, smmu->clks);
 	if (ret)
 		return ret;
@@ -4001,10 +3997,6 @@ static int __maybe_unused arm_smmu_pm_suspend(struct device *dev)
 {
 	int ret = 0;
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
-
-	/* TEST k61: leave the apps SMMU alone across system suspend */
-	if (of_node_name_eq(dev->of_node, "apps-smmu"))
-		return 0;
 
 	if (pm_runtime_suspended(dev))
 		goto clk_unprepare;

@@ -46,8 +46,6 @@
 #include <linux/clk/qcom.h>
 #include <soc/qcom/crm.h>
 #include <linux/pinctrl/qcom-pinctrl.h>
-#include <linux/console.h>
-#include <linux/kthread.h>
 #include <soc/qcom/pcie-pdc.h>
 #include <linux/random.h>
 #include <linux/pci-ecam.h>
@@ -1696,25 +1694,6 @@ static void msm_pcie_config_perst(struct msm_pcie_dev_t *dev, bool assert)
 			    dev->rc_idx);
 		gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
 				    dev->gpio[MSM_PCIE_GPIO_PERST].on);
-		/* DEBUG k61: WAKE# level for 20 ms after PERST (no-DRV suspend) */
-		if (!dev->rc_idx && dev->gpio[MSM_PCIE_GPIO_WAKE].num) {
-			static unsigned int runs;
-			int w, lw = -1, n = 0;
-			u64 t0 = ktime_get_ns(), now;
-
-			if (runs++ < 12) {
-				while ((now = ktime_get_ns()) - t0 < 20 * NSEC_PER_MSEC) {
-					w = gpio_get_value(dev->gpio[MSM_PCIE_GPIO_WAKE].num);
-					if (w != lw && n++ < 16)
-						pr_info("k61dbg: perst wake# %d at +%lluus\n",
-							w, (now - t0) / 1000);
-					lw = w;
-					udelay(20);
-				}
-				pr_info("k61dbg: perst wake# end level %d, %d changes\n",
-					lw, n);
-			}
-		}
 	} else {
 		PCIE_INFO(dev, "PCIe: RC%d: de-assert PERST\n",
 			    dev->rc_idx);
@@ -6542,23 +6521,6 @@ static void msm_pcie_disable_dbi_mirroring(struct msm_pcie_dev_t *dev)
 	struct resource *atu_res = dev->res[MSM_PCIE_RES_IATU].resource;
 	u32 slv_addr_space_size = 0x80000000;
 
-	/*
-	 * TEST k61: the 5.4 address layout on lahaina (PARF dumps, k54dbg):
-	 * DBI base 0, ATU base 0x1000 (both relative, mirrored), slave address
-	 * space 64 MB. With everything else in the post-DRV PARF state equal
-	 * to 5.4, this is the last controller difference.
-	 */
-	if (1) {
-		msm_pcie_write_reg(dev->parf, PCIE20_PARF_DBI_BASE_ADDR, 0);
-		msm_pcie_write_reg(dev->parf, PCIE20_PARF_DBI_BASE_ADDR_HI, 0);
-		msm_pcie_write_reg(dev->parf, PCIE20_PARF_ATU_BASE_ADDR, 0x1000);
-		msm_pcie_write_reg(dev->parf, PCIE20_PARF_ATU_BASE_ADDR_HI, 0);
-		msm_pcie_write_reg(dev->parf, PCIE20_PARF_SLV_ADDR_SPACE_SIZE,
-				   0x04000000);
-		msm_pcie_write_reg(dev->parf, PCIE20_PARF_SLV_ADDR_SPACE_SIZE_HI, 0);
-		return;
-	}
-
 	/* Configure DBI base address */
 	msm_pcie_write_reg(dev->parf, PCIE20_PARF_DBI_BASE_ADDR,
 				PCIE_LOWER_ADDR(dbi_res->start));
@@ -6647,7 +6609,7 @@ static int msm_pcie_enable_link(struct msm_pcie_dev_t *dev)
 				BIT(MSM_PCIE_INT_EVT_L1SUB_TIMEOUT) |
 				BIT(MSM_PCIE_INT_EVT_AER_LEGACY) |
 				BIT(MSM_PCIE_INT_EVT_AER_ERR) |
-				/* TEST k61: masked as on 5.4 */
+				BIT(MSM_PCIE_INT_EVT_BRIDGE_FLUSH_N) |
 				BIT(MSM_PCIE_INT_EVT_MSI_0) |
 				BIT(MSM_PCIE_INT_EVT_MSI_1) |
 				BIT(MSM_PCIE_INT_EVT_MSI_2) |
@@ -6740,18 +6702,9 @@ static int msm_pcie_enable_link(struct msm_pcie_dev_t *dev)
 	 * entirely. We can avoid setting this altogether, just to maintain backward compatibility
 	 * with older targets, set this bit only if it exists.
 	 */
-	/*
-	 * TEST k61: 5.4 never enabled dynamic link width upconfigure on
-	 * lahaina (PARF CFG_BITS_3 0x68, LANE_SKEW_OFF 0). With it, the L1.2
-	 * exit after an aborted DRV suspend wedges the controller on the step
-	 * into Recovery (sysrun-58/59); the post-DRV PARF state is otherwise
-	 * identical to 5.4.
-	 */
-	if (0) {
-		if (dev->parf_ver < PARF_VER_WITH_NO_LANE_UPCONFIG_BIT)
-			msm_pcie_write_mask(dev->parf + PCIE20_PARF_CFG_BITS_3, 0, BIT(8));
-		msm_pcie_write_mask(dev->dm_core + PCIE20_LANE_SKEW_OFF, 0, BIT(5));
-	}
+	if (dev->parf_ver < PARF_VER_WITH_NO_LANE_UPCONFIG_BIT)
+		msm_pcie_write_mask(dev->parf + PCIE20_PARF_CFG_BITS_3, 0, BIT(8));
+	msm_pcie_write_mask(dev->dm_core + PCIE20_LANE_SKEW_OFF, 0, BIT(5));
 
 	msm_pcie_write_mask(dev->dm_core + PCIE_GEN3_MISC_CONTROL, 1, BIT(0));
 	/* override the vendor id */
@@ -7651,7 +7604,6 @@ static void handle_sbr_func(struct work_struct *work)
 					handle_sbr_work);
 
 	PCIE_DBG(dev, "PCIe: SBR work for RC%d\n", dev->rc_idx);
-	pr_info("k61dbg: SBR work for RC%d\n", dev->rc_idx);
 
 	for (i = 0; i < MSM_PCIE_MAX_LINKDOWN_RESET; i++) {
 		reset_info = &dev->linkdown_reset[i];
@@ -7720,16 +7672,7 @@ static irqreturn_t handle_flush_irq(int irq, void *data)
 {
 	struct msm_pcie_dev_t *dev = data;
 
-	/*
-	 * TEST k61: 5.4 never unmasked BRIDGE_FLUSH_N. Its SBR work (LTSSM_EN
-	 * write, ELBI/DBI link checks from a kworker) may be what hits the
-	 * controller during the L1.2 exit after a DRV resume.
-	 */
-	pr_info("k61dbg: BRIDGE_FLUSH_N, SBR work skipped, LTSSM 0x%x PM_STTS 0x%x\n",
-		readl_relaxed(dev->parf + PCIE20_PARF_LTSSM),
-		readl_relaxed(dev->parf + PCIE20_PARF_PM_STTS));
-	if (0)
-		schedule_work(&dev->handle_sbr_work);
+	schedule_work(&dev->handle_sbr_work);
 
 	return IRQ_HANDLED;
 }
@@ -8300,10 +8243,6 @@ static irqreturn_t handle_wake_irq(int irq, void *data)
 	spin_lock_irqsave(&dev->irq_lock, irqsave_flags);
 
 	dev->wake_counter++;
-	pr_info("k61dbg: pcie wake irq rc%d link_status %d suspending %d level %d\n",
-		dev->rc_idx, dev->link_status, dev->suspending,
-		dev->gpio[MSM_PCIE_GPIO_WAKE].num ?
-		gpio_get_value(dev->gpio[MSM_PCIE_GPIO_WAKE].num) : -1);
 	PCIE_DBG(dev, "PCIe: No. %ld wake IRQ for RC%d\n",
 			dev->wake_counter, dev->rc_idx);
 
@@ -8502,11 +8441,6 @@ static irqreturn_t handle_global_irq(int irq, void *data)
 
 	PCIE_DUMP(dev, "RC%d: Global IRQ %d received: 0x%x status2: 0x%x\n",
 		  dev->rc_idx, irq, status, status2);
-	/* DEBUG k61: global IRQ events (DRV resume hang) */
-	if (status || status2)
-		pr_info("k61dbg: global irq status 0x%x status2 0x%x LTSSM 0x%x\n",
-			status, status2,
-			readl_relaxed(dev->parf + PCIE20_PARF_LTSSM));
 
 	for (i = 0; i <= MSM_PCIE_INT_EVT_MAX; i++) {
 		if (status & BIT(i)) {
@@ -9042,7 +8976,7 @@ static void msm_pcie_config_l1ss_disable_all(struct msm_pcie_dev_t *dev,
 	}
 }
 
-static int __maybe_unused msm_pcie_config_l1_2_threshold(struct pci_dev *pdev, void *dev)
+static int msm_pcie_config_l1_2_threshold(struct pci_dev *pdev, void *dev)
 {
 	struct msm_pcie_dev_t *pcie_dev = (struct msm_pcie_dev_t *)dev;
 	u32 l1ss_cap_id_offset, l1ss_ctl1_offset;
@@ -9088,56 +9022,12 @@ static int msm_pcie_config_l1ss_enable(struct pci_dev *pdev, void *dev)
 	return 0;
 }
 
-/*
- * TEST k61: L1 PM substate timing as 5.4 ended up with on lahaina + QCA6490
- * (generic ASPM, POWER_SUPERSAVE): T_POWER_ON 0 (both ports advertise 0) and
- * LTR_L1.2_THRESHOLD value 2 scale 3, instead of 6.1's T_POWER_ON 10 us and
- * the DT threshold. T_POWER_ON is the wait between the L1.2 exit and the
- * transmitter coming up, the step where 6.1 wedges after a DRV resume.
- */
-static int k61_l1ss_timing_54(struct pci_dev *pdev, void *dev)
-{
-	u16 l1ss = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_L1SS);
-	u32 ctl1;
-
-	if (!l1ss)
-		return 0;
-	pci_read_config_dword(pdev, l1ss + PCI_L1SS_CTL1, &ctl1);
-	/* L1.2 must be off while its timing is programmed */
-	pci_write_config_dword(pdev, l1ss + PCI_L1SS_CTL1,
-			       ctl1 & ~PCI_L1SS_CTL1_L1_2_MASK);
-	pci_write_config_dword(pdev, l1ss + PCI_L1SS_CTL2, 0);
-	ctl1 &= ~(PCI_L1SS_CTL1_LTR_L12_TH_VALUE | PCI_L1SS_CTL1_LTR_L12_TH_SCALE);
-	ctl1 |= (3 << 29) | (2 << 16);
-	pci_write_config_dword(pdev, l1ss + PCI_L1SS_CTL1, ctl1);
-	return 0;
-}
-
-static void k61_l1ss_timing_print(struct pci_dev *pdev)
-{
-	u16 l1ss = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_L1SS);
-	u32 c1 = 0, c2 = 0;
-
-	if (!l1ss)
-		return;
-	pci_read_config_dword(pdev, l1ss + PCI_L1SS_CTL1, &c1);
-	pci_read_config_dword(pdev, l1ss + PCI_L1SS_CTL2, &c2);
-	pr_info("k61dbg: l1ss %s ctl1 0x%x ctl2 0x%x\n", pci_name(pdev), c1, c2);
-}
-
-static int k61_l1ss_timing_print_walk(struct pci_dev *pdev, void *dev)
-{
-	k61_l1ss_timing_print(pdev);
-	return 0;
-}
-
 static void msm_pcie_config_l1ss_enable_all(struct msm_pcie_dev_t *dev)
 {
 	if (dev->l1ss_supported) {
-		/* TEST k61: 5.4 timing instead of the DT threshold */
-		pci_walk_bus(dev->dev->bus, k61_l1ss_timing_54, dev);
+		pci_walk_bus(dev->dev->bus, msm_pcie_config_l1_2_threshold,
+				dev);
 		pci_walk_bus(dev->dev->bus, msm_pcie_config_l1ss_enable, dev);
-		pci_walk_bus(dev->dev->bus, k61_l1ss_timing_print_walk, dev);
 	}
 }
 
@@ -10202,34 +10092,11 @@ int msm_pcie_dsp_link_control(struct pci_dev *pci_dev,
 }
 EXPORT_SYMBOL_GPL(msm_pcie_dsp_link_control);
 
-/*
- * DEBUG k61: trace window from the end of a DRV resume to the next
- * allow_l1, with every print flushed to the consoles (console_unlock()
- * writes out all pending records) so that the last line in pstore is the
- * last step that completed.
- */
-bool k61_drv_trace;
-EXPORT_SYMBOL(k61_drv_trace);
-
-#define K61T(fmt, ...)						\
-	do {							\
-		pr_info("k61dbg: " fmt, ##__VA_ARGS__);		\
-		if (k61_drv_trace) {				\
-			console_lock();				\
-			console_unlock();			\
-		}						\
-	} while (0)
-
 int msm_pcie_allow_l1(struct pci_dev *pci_dev)
 {
 	struct pci_dev *root_pci_dev;
 	struct msm_pcie_dev_t *pcie_dev;
 	int ret = 0;
-
-	if (k61_drv_trace) {
-		K61T("allow_l1: trace window closed\n");
-		k61_drv_trace = false;
-	}
 
 	root_pci_dev = pcie_find_root_port(pci_dev);
 	if (!root_pci_dev)
@@ -10290,161 +10157,8 @@ out:
 }
 EXPORT_SYMBOL(msm_pcie_allow_l1);
 
-/* DEBUG k6x: PHY readback vs the DT init sequence (DRV resume hang) */
-static void k6x_phycheck(struct msm_pcie_dev_t *d, const char *where)
-{
-	static unsigned int calls;
-	struct msm_pcie_phy_info_t *seq = d->phy_sequence;
-	u32 i, j, rb, bad = 0;
-	bool full = calls++ < 6;
-
-	if (!seq || d->rc_idx)
-		return;
-	pr_info("k6xphy: %s begin LTSSM 0x%x PM_STTS 0x%x\n", where,
-		readl_relaxed(d->parf + PCIE20_PARF_LTSSM),
-		readl_relaxed(d->parf + PCIE20_PARF_PM_STTS));
-	for (i = 0; i < d->phy_len; i++) {
-		/* only the last write of a register is its programmed value */
-		for (j = i + 1; j < d->phy_len; j++)
-			if (seq[j].offset == seq[i].offset)
-				break;
-		if (j < d->phy_len)
-			continue;
-		rb = readl_relaxed(d->phy + seq[i].offset);
-		if (rb != seq[i].val) {
-			bad++;
-			if (full)
-				pr_info("k6xphy: %s 0x%04x prog 0x%02x read 0x%02x\n",
-					where, seq[i].offset, seq[i].val, rb);
-		}
-	}
-	pr_info("k6xphy: %s end, %u of %u differ\n", where, bad, d->phy_len);
-}
-
-/* DEBUG k61: one-shot PCIe0 register dump in L0 (5.4 vs 6.1 diff) */
-static void k6x_dump_block(const char *name, void __iomem *base, u32 size)
-{
-	u32 i;
-
-	for (i = 0; i + 32 <= size; i += 32)
-		pr_info("k6xdump: %s 0x%04x %08x %08x %08x %08x %08x %08x %08x %08x\n",
-			name, i,
-			readl_relaxed(base + i), readl_relaxed(base + i + 4),
-			readl_relaxed(base + i + 8), readl_relaxed(base + i + 12),
-			readl_relaxed(base + i + 16), readl_relaxed(base + i + 20),
-			readl_relaxed(base + i + 24), readl_relaxed(base + i + 28));
-}
-
-static void k6x_regdump(struct msm_pcie_dev_t *d)
-{
-	static bool done;
-	void __iomem *gcc;
-
-	if (done || d->rc_idx || ktime_get_boottime_seconds() < 90)
-		return;
-	done = true;
-
-	pr_info("k6xdump: begin LTSSM 0x%x\n",
-		readl_relaxed(d->parf + PCIE20_PARF_LTSSM));
-	k6x_dump_block("parf", d->parf, 0x2000);
-	k6x_dump_block("phy", d->phy, 0x2000);
-	k6x_dump_block("dbi", d->dm_core, 0xf00);
-	gcc = ioremap(0x16b000, 0x1000);
-	if (gcc) {
-		k6x_dump_block("gcc6b", gcc, 0x100);
-		iounmap(gcc);
-	}
-	gcc = ioremap(0x152000, 0x20);
-	if (gcc) {
-		k6x_dump_block("gcc52", gcc, 0x20);
-		iounmap(gcc);
-	}
-	pr_info("k6xdump: end\n");
-	k6x_phycheck(d, "L0");
-	pci_walk_bus(d->dev->bus, k61_l1ss_timing_print_walk, d);
-}
-
-/* DEBUG k6x: full PARF dump right after drv_disable, first 2 per boot */
-static void k6x_parf_drv(struct msm_pcie_dev_t *d)
-{
-	static unsigned int n;
-
-	if (d->rc_idx || n++ >= 2)
-		return;
-	pr_info("k6xpdrv: begin %u\n", n);
-	k6x_dump_block("pdrv", d->parf, 0x1000);
-	k6x_dump_block("phydrv", d->phy, 0x2000);
-	{
-		void __iomem *g = ioremap(0x16b000, 0x100);
-
-		if (g) {
-			k6x_dump_block("gcc6bdrv", g, 0x100);
-			iounmap(g);
-		}
-		g = ioremap(0x152000, 0x20);
-		if (g) {
-			k6x_dump_block("gcc52drv", g, 0x20);
-			iounmap(g);
-		}
-	}
-	pr_info("k6xpdrv: end %u\n", n);
-}
-
-#define K6XP(fmt, ...) K61T(fmt, ##__VA_ARGS__)
-
-/* DEBUG k6x: does the RC PHY power back up after the L1.2 exit request? */
-static void k6x_exit_probe(struct msm_pcie_dev_t *d)
-{
-	static unsigned int calls;
-	static void __iomem *g, *t;
-	u32 c, st, cm, lc = ~0U, ls = ~0U, lm = ~0U;
-	u64 t0;
-	unsigned int i;
-
-	if (d->rc_idx || calls >= 4)
-		return;
-	if (!g)
-		g = ioremap(0x16b030, 4);
-	if (!g)
-		return;
-	/* only the PHY-down state: pipe clock reports CLK_OFF */
-	c = readl_relaxed(g);
-	if (!(c & BIT(31)))
-		return;
-	calls++;
-	t0 = ktime_get_ns();
-	K6XP("k6xexit: begin %u pipe_cbcr 0x%x\n", calls, c);
-	if (!t)
-		t = ioremap(0x0f15f000, 4);
-	for (i = 0; i < 50; i++) {
-		bool v = i < 30;
-
-		if (v)
-			K6XP("k6xexit: %u tick +%lluus\n", i,
-			     (ktime_get_ns() - t0) / 1000);
-		c = readl_relaxed(g);
-		if (v)
-			K6XP("k6xexit: %u gcc 0x%x\n", i, c);
-		if (v && t)
-			K6XP("k6xexit: %u tlmm 0x%x\n", i, readl_relaxed(t));
-		st = readl_relaxed(d->phy + 0x214);
-		cm = readl_relaxed(d->phy + 0x140);
-		if (v || c != lc || st != ls || cm != lm || i == 49) {
-			K6XP("k6xexit: %u +%lluus pipe_cbcr 0x%x pcs_status 0x%x com_140 0x%x\n",
-			     i, (ktime_get_ns() - t0) / 1000, c, st, cm);
-			lc = c;
-			ls = st;
-			lm = cm;
-		}
-		udelay(100);
-	}
-	K6XP("k6xexit: end\n");
-}
-
 int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 {
-	bool k61_l1sub = false;
-	u32 k6x_stts0 = 0;
 	struct pci_dev *root_pci_dev;
 	struct msm_pcie_dev_t *pcie_dev;
 	u32 cnt = 0;
@@ -10490,28 +10204,18 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 		goto out;
 
 	/*
-	 * Bring the link out of L1 through PARF only and wait for L0/L0s
-	 * before any DBI or endpoint access: right after a DRV resume the
-	 * link can still be in an L1 substate, and an endpoint config access
-	 * or a DBI write there stalled the bus until the watchdog bit (cnss
-	 * DRV fast resume / speed restore after an aborted suspend).
+	 * Bring the link out of L1 with root port local accesses only (DBI
+	 * LNKCTL and PARF), as 5.4 does. The endpoint is only reached once
+	 * the link is in L0/L0s: right after a DRV resume the link can still
+	 * be in L1 and an endpoint config access there hung the bus until
+	 * the watchdog bit (cnss DRV fast resume after an aborted suspend).
 	 */
-	k6x_stts0 = readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS);
-	k61_l1sub = k6x_stts0 & BIT(8);
-	K61T("prevent_l1: LTSSM 0x%x PM_STTS 0x%x, PARF PM_CTRL write\n",
-		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM),
-		readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS));
+	msm_pcie_write_mask(pcie_dev->dm_core +
+				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
+				PCI_EXP_LNKCTL_ASPM_L1, 0);
 	msm_pcie_write_mask(pcie_dev->parf + PCIE20_PARF_PM_CTRL, 0, BIT(5));
-	K61T("prevent_l1: PM_CTRL written\n");
-	if (k61_l1sub)
-		k6x_exit_probe(pcie_dev);
-	K61T("prevent_l1: poll L0, LTSSM 0x%x\n",
-		readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
 
 	/* confirm link is in L0/L0s */
-	if (k61_drv_trace)
-		K61T("prevent_l1: first loop read, LTSSM 0x%x\n",
-		     readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
 	while (!msm_pcie_check_ltssm_state(pcie_dev, MSM_PCIE_LTSSM_L0) &&
 		!msm_pcie_check_ltssm_state(pcie_dev, MSM_PCIE_LTSSM_L0S)) {
 		/* Exiting early if linkdown happens */
@@ -10540,31 +10244,11 @@ int msm_pcie_prevent_l1(struct pci_dev *pci_dev)
 			goto err;
 		}
 
-		/*
-		 * DEBUG k61: from an L1 substate, busy-wait and print every poll
-		 * (does the stall need the CPU to sleep, and how far does the
-		 * L1.2 exit get?)
-		 */
-		if (k61_l1sub || k61_drv_trace) {
-			K61T("prevent_l1 poll %u: LTSSM 0x%x PM_STTS 0x%x STTS_1 0x%x\n",
-				cnt, readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM),
-				readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS),
-				readl_relaxed(pcie_dev->parf + PCIE20_PARF_PM_STTS_1));
-			udelay(100);
-		} else {
-			usleep_range(100, 105);
-		}
+		usleep_range(100, 105);
 	}
 
-	K61T("prevent_l1: L0 after %u polls, DBI LNKCTL write\n", cnt);
-	/* the controller (DBI) and the EP are reachable now: disable L1 there */
-	msm_pcie_write_mask(pcie_dev->dm_core +
-				(root_pci_dev->pcie_cap + PCI_EXP_LNKCTL),
-				PCI_EXP_LNKCTL_ASPM_L1, 0);
-	K61T("prevent_l1: DBI LNKCTL written, EP/RP L1 disable\n");
+	/* Disable L1 on EP and RP too, now that the link is in L0/L0s */
 	msm_pcie_config_l1_disable_all(pcie_dev, pcie_dev->dev->bus);
-	K61T("prevent_l1: done\n");
-	k6x_regdump(pcie_dev);
 
 	PCIE_DBG2(pcie_dev, "PCIe: RC%d: %02x:%02x.%01x: exit\n",
 		pcie_dev->rc_idx, pci_dev->bus->number,
@@ -11840,118 +11524,8 @@ static bool msm_pcie_ltssm_link_usable(u32 ltssm)
 	       ltssm == MSM_PCIE_LTSSM_L1_IDLE;
 }
 
-/* DEBUG k61: PARF-only link state snapshot around the DRV hand-back */
-static void k61_parf_snap(struct msm_pcie_dev_t *d, const char *tag,
-			  u32 *lt, u32 *st)
-{
-	*lt = readl_relaxed(d->parf + PCIE20_PARF_LTSSM);
-	*st = readl_relaxed(d->parf + PCIE20_PARF_PM_STTS);
-	pr_info("k61dbg: %s: LTSSM 0x%x PM_STTS 0x%x STTS_1 0x%x PM_CTRL 0x%x CLKREQ_OVR 0x%x\n",
-		tag, *lt, *st,
-		readl_relaxed(d->parf + PCIE20_PARF_PM_STTS_1),
-		readl_relaxed(d->parf + PCIE20_PARF_PM_CTRL),
-		readl_relaxed(d->parf + PCIE20_PARF_CLKREQ_OVERRIDE));
-}
-
-/*
- * DEBUG k61: after drv_disable, read PARF only (no writes) for up to 20 ms
- * and print every change, to see whether the link leaves the L1 substate by
- * itself and whether a read alone can stall.
- */
-static void k61_parf_watch(struct msm_pcie_dev_t *d)
-{
-	u32 lt, st, plt, pst, i, l;
-	ktime_t t0 = ktime_get();
-
-	k61_parf_snap(d, "after drv_disable", &plt, &pst);
-	for (i = 0; i < 200; i++) {
-		lt = readl_relaxed(d->parf + PCIE20_PARF_LTSSM);
-		st = readl_relaxed(d->parf + PCIE20_PARF_PM_STTS);
-		l = lt & MSM_PCIE_LTSSM_MASK;
-		if (lt != plt || st != pst)
-			pr_info("k61dbg: watch +%lld us: LTSSM 0x%x PM_STTS 0x%x\n",
-				ktime_us_delta(ktime_get(), t0), lt, st);
-		plt = lt;
-		pst = st;
-		if (!(st & BIT(8)) && (l == MSM_PCIE_LTSSM_L0 ||
-				       l == MSM_PCIE_LTSSM_L0S))
-			break;
-		usleep_range(100, 105);
-	}
-	pr_info("k61dbg: watch end after %u polls, +%lld us: LTSSM 0x%x PM_STTS 0x%x\n",
-		i, ktime_us_delta(ktime_get(), t0), lt, st);
-}
-
-/* DEBUG k61: print the DRV resume/suspend steps (resume hang) */
-#pragma push_macro("PCIE_DBG")
-#undef PCIE_DBG
-#define PCIE_DBG(dev, fmt, arg...) pr_info("k61dbg: %s: " fmt, __func__, ##arg)
-/* DEBUG k61: sidecar watcher on another CPU during the post-DRV exit */
-static int k6x_sidecar_fn(void *data)
-{
-	void __iomem *g = ioremap(0x16b030, 4);	/* gcc_pcie_0_pipe_clk CBCR */
-	void __iomem *r = ioremap(0x18c004, 4);	/* gcc_pcie_0_clkref_en */
-	void __iomem *t = ioremap(0x0f15f000, 4);	/* TLMM GPIO 95 ctl */
-	u64 t0 = ktime_get_ns(), now, hb = 0;
-	u32 a, b, c, la = ~0U, lb = ~0U, lc = ~0U;
-	unsigned int n = 0;
-
-	if (!g || !r || !t)
-		goto out;
-	pr_info("k61dbg: sc start cpu%d\n", raw_smp_processor_id());
-	while ((now = ktime_get_ns()) - t0 < 300 * NSEC_PER_MSEC) {
-		a = readl_relaxed(g);
-		b = readl_relaxed(r);
-		c = readl_relaxed(t);
-		if (a != la || b != lb || c != lc || now - hb >= NSEC_PER_MSEC) {
-			pr_info("k61dbg: sc %u +%lluus pipe 0x%x clkref 0x%x tlmm 0x%x\n",
-				n, (now - t0) / 1000, a, b, c);
-			la = a;
-			lb = b;
-			lc = c;
-			hb = now;
-		}
-		n++;
-		udelay(20);
-	}
-	pr_info("k61dbg: sc end\n");
-out:
-	if (g)
-		iounmap(g);
-	if (r)
-		iounmap(r);
-	if (t)
-		iounmap(t);
-	return 0;
-}
-
-static void k6x_sidecar_start(void)
-{
-	static unsigned int runs;
-	struct task_struct *tsk;
-	int cpu, me = raw_smp_processor_id();
-
-	if (runs >= 3)
-		return;
-	for (cpu = (me + 4) % nr_cpu_ids; cpu == me || !cpu_online(cpu);
-	     cpu = (cpu + 1) % nr_cpu_ids)
-		;
-	tsk = kthread_create(k6x_sidecar_fn, NULL, "k6xsc");
-	if (IS_ERR(tsk))
-		return;
-	runs++;
-	kthread_bind(tsk, cpu);
-	sched_set_fifo(tsk);
-	wake_up_process(tsk);
-}
-
-/* TEST k61: AP keeps its PCIe0 votes while DRV owns the link */
-static bool k61_keep_votes = true;
-
 static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 {
-	pr_info("k61dbg: drv_resume enter rc%d drv_enabled %d\n", pcie_dev->rc_idx,
-		!!PCIE_RC_DRV_ENABLED(pcie_dev->rc_idx));
 	struct msm_pcie_drv_info *drv_info = pcie_dev->drv_info;
 	struct msm_pcie_clk_info_t *clk_info;
 	u32 clkreq_override_en = 0, val = 0;
@@ -11966,9 +11540,6 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 		rpmsg_ret = msm_pcie_drv_send_rpmsg(pcie_dev,
 					&drv_info->drv_disable_l1ss_sleep);
 
-	PCIE_DBG(pcie_dev, "rpmsg l1ss done %d, vreg_init\n", rpmsg_ret);
-	if (k61_keep_votes && !pcie_dev->rc_idx)
-		goto k61_votes_kept;
 	msm_pcie_vreg_init(pcie_dev);
 
 	PCIE_DBG(pcie_dev, "PCIe: RC%d:enable gdsc-core\n", pcie_dev->rc_idx);
@@ -12006,10 +11577,8 @@ static int msm_pcie_drv_resume(struct msm_pcie_dev_t *pcie_dev)
 	PCIE_DBG(pcie_dev, "PCIe: RC%d:turn on unsuppressible clks Done.\n",
 		pcie_dev->rc_idx);
 
-k61_votes_kept:
 	msm_pcie_cesta_disable_drv(pcie_dev);
 
-	PCIE_DBG(pcie_dev, "read PARF CLKREQ_OVERRIDE\n");
 	clkreq_override_en = readl_relaxed(pcie_dev->parf +
 				PCIE20_PARF_CLKREQ_OVERRIDE) &
 				PCIE20_PARF_CLKREQ_IN_ENABLE;
@@ -12070,8 +11639,7 @@ k61_votes_kept:
 
 	clk_info = pcie_dev->pipe_clk;
 	for (i = 0; i < pcie_dev->num_pipe_clk; i++, clk_info++) {
-		if (clk_info->hdl && !clk_info->suppressible &&
-		    !(k61_keep_votes && !pcie_dev->rc_idx)) {
+		if (clk_info->hdl && !clk_info->suppressible) {
 			ret = clk_prepare_enable(clk_info->hdl);
 			if (ret)
 				PCIE_DBG(pcie_dev,
@@ -12082,11 +11650,6 @@ k61_votes_kept:
 
 	PCIE_DBG(pcie_dev, "PCIe: RC%d:turn on pipe clk, Done\n",
 		pcie_dev->rc_idx);
-	{
-		u32 k61lt, k61st;
-
-		k61_parf_snap(pcie_dev, "before drv_disable", &k61lt, &k61st);
-	}
 
 	if (clkreq_override_en) {
 		/* remove CLKREQ override */
@@ -12100,17 +11663,11 @@ k61_votes_kept:
 
 	/* if DRV hand-off was done and DRV subsystem is powered up */
 	if (PCIE_RC_DRV_ENABLED(pcie_dev->rc_idx) && !rpmsg_ret) {
-		PCIE_DBG(pcie_dev, "send drv_disable\n");
 		msm_pcie_drv_send_rpmsg(pcie_dev,
 					&drv_info->drv_disable);
 		clear_bit(pcie_dev->rc_idx, &pcie_drv.rc_drv_enabled);
 	}
 
-	k6x_parf_drv(pcie_dev);
-	k6x_phycheck(pcie_dev, "after drv_disable");
-	k61_parf_watch(pcie_dev);
-
-	PCIE_DBG(pcie_dev, "read LINKCTRLSTATUS, LTSSM 0x%x\n", readl_relaxed(pcie_dev->parf + PCIE20_PARF_LTSSM));
 	/* scale CX and rate change based on current GEN speed */
 	pcie_dev->current_link_speed = (readl_relaxed(pcie_dev->dm_core +
 					PCIE20_CAP_LINKCTRLSTATUS) >> 16) &
@@ -12150,11 +11707,6 @@ k61_votes_kept:
 			 pcie_dev->rc_idx,
 			 TO_LTSSM_STR(val & MSM_PCIE_LTSSM_MASK));
 
-	PCIE_DBG(pcie_dev, "drv_resume done speed %d ret %d LTSSM 0x%x\n", pcie_dev->current_link_speed, ret, val);
-	if (!pcie_dev->rc_idx)
-		k6x_sidecar_start();
-	k61_drv_trace = true;
-	K61T("drv_resume: trace window open\n");
 	mutex_unlock(&pcie_dev->setup_lock);
 	mutex_unlock(&pcie_dev->recovery_lock);
 
@@ -12219,11 +11771,6 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 		ib = ICC_PEAK_BW;
 	}
 
-	if (k61_keep_votes && !pcie_dev->rc_idx) {
-		pr_info("k61dbg: drv_suspend: AP votes kept\n");
-		goto k61_votes_kept_off;
-	}
-
 	/* turn off all unsuppressible clocks */
 	clk_info = pcie_dev->pipe_clk;
 	for (i = 0; i < pcie_dev->num_pipe_clk; i++, clk_info++)
@@ -12251,7 +11798,6 @@ static int msm_pcie_drv_suspend(struct msm_pcie_dev_t *pcie_dev,
 
 	msm_pcie_vreg_deinit(pcie_dev);
 
-k61_votes_kept_off:
 	/*
 	 * Enable L1ss sleep if the client allows it, only after the APPS
 	 * votes (clocks, ICC, GDSC, regulators) are gone, as 5.4 does. Sent
@@ -12275,7 +11821,6 @@ out:
 	mutex_unlock(&pcie_dev->recovery_lock);
 	return ret;
 }
-#pragma pop_macro("PCIE_DBG")
 
 int msm_pcie_pm_control(enum msm_pcie_pm_opt pm_opt, u32 busnr, void *user,
 			void *data, u32 options)
