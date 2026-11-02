@@ -181,6 +181,15 @@ config SYS_HYPERVISOR
 	bool
 	default n
 
+config FW_DEVLINK_SYNC_STATE_TIMEOUT
+	bool "sync_state() behavior defaults to timeout instead of strict"
+	help
+	  This is build time equivalent of adding kernel command line parameter
+	  "fw_devlink.sync_state=timeout". Give up waiting on consumers and
+	  call sync_state() on any devices that haven't yet received their
+	  sync_state() calls after deferred_probe_timeout has expired or by
+	  late_initcall() if !CONFIG_MODULES.
+
 config GENERIC_CPU_DEVICES
 	bool
 	default n
