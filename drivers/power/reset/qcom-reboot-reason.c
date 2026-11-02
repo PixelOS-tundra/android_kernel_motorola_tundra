@@ -18,10 +18,16 @@
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 
+#define RESET_EXTRA_POST_PANIC_REASON	(BIT(4) | BIT(5))
+#define RESET_EXTRA_POST_PMICWDT_REASON	BIT(5)
+#define RESET_EXTRA_POST_WDT_REASON	BIT(4)
+#define RESET_EXTRA_REBOOT_BL_REASON	BIT(2)
+
 struct qcom_reboot_reason {
 	struct device *dev;
 	struct notifier_block reboot_nb;
 	struct nvmem_cell *nvmem_cell;
+	struct nvmem_cell *nvmem_oem_cell;
 	struct poweroff_reason *reasons;
 };
 
@@ -39,6 +45,15 @@ static struct poweroff_reason pon_reasons[] = {
 	{ "dm-verity enforcing",	0x05, 0x1 },
 	{ "keys clear",			0x06, 0x1 },
 	{ "shipmode",			0x20, 0x2 },
+	{}
+};
+
+/* Motorola: a second SDAM cell, read by their ABL */
+static struct poweroff_reason extra_reasons[] = {
+	{ "post-wdt",			RESET_EXTRA_POST_WDT_REASON, 0x1 },
+	{ "post-pmicwdt",		RESET_EXTRA_POST_PMICWDT_REASON, 0x1 },
+	{ "post-panic",			RESET_EXTRA_POST_PANIC_REASON, 0x1 },
+	{ "bootloader",			RESET_EXTRA_REBOOT_BL_REASON, 0x1 },
 	{}
 };
 
@@ -85,6 +100,20 @@ static int qcom_reboot_reason_reboot(struct notifier_block *this,
 		}
 	}
 
+	if (!reboot->nvmem_oem_cell)
+		return NOTIFY_OK;
+
+	for (reason = extra_reasons; reason->cmd; reason++) {
+		if (!strcmp(cmd, reason->cmd)) {
+			rc = nvmem_cell_write(reboot->nvmem_oem_cell,
+					 &reason->pon_reason,
+					 reason->size);
+			if (rc < 0)
+				pr_err("extra reason store failed, rc=%d\n", rc);
+			break;
+		}
+	}
+
 	return NOTIFY_OK;
 }
 
@@ -114,6 +143,14 @@ static int qcom_reboot_reason_probe(struct platform_device *pdev)
 
 	if (IS_ERR(reboot->nvmem_cell))
 		return PTR_ERR(reboot->nvmem_cell);
+
+	reboot->nvmem_oem_cell = devm_nvmem_cell_get(reboot->dev,
+						     "extra_restart_reason");
+	if (IS_ERR(reboot->nvmem_oem_cell)) {
+		if (PTR_ERR(reboot->nvmem_oem_cell) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+		reboot->nvmem_oem_cell = NULL;
+	}
 
 	reboot->reboot_nb.notifier_call = qcom_reboot_reason_reboot;
 	reboot->reboot_nb.priority = 255;
