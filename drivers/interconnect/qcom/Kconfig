@@ -47,6 +47,14 @@ config INTERCONNECT_QCOM_MSM8996
 	  This is a driver for the Qualcomm Network-on-Chip on msm8996-based
 	  platforms.
 
+config INTERCONNECT_QCOM_EPSS_L3
+	tristate "LAHAINA EPSS L3 driver"
+	depends on INTERCONNECT_QCOM || COMPILE_TEST
+	help
+	  This is a driver for the Qualcomm Technologies, Inc. EPSS
+	  L3 control found on lahaina-based platforms. The EPSS L3 provider
+	  votes for the L3 cache frequency of the CPU clusters.
+
 config INTERCONNECT_QCOM_OSM_L3
 	tristate "Qualcomm OSM L3 interconnect driver"
 	depends on INTERCONNECT_QCOM || COMPILE_TEST

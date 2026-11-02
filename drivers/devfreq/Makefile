@@ -18,6 +18,9 @@ obj-$(CONFIG_ARM_RK3399_DMC_DEVFREQ)	+= rk3399_dmc.o
 obj-$(CONFIG_ARM_SUN8I_A33_MBUS_DEVFREQ)	+= sun8i-a33-mbus.o
 obj-$(CONFIG_ARM_TEGRA_DEVFREQ)		+= tegra30-devfreq.o
 obj-$(CONFIG_QCOM_DEVFREQ_ICC)		+= devfreq_icc.o
+obj-$(CONFIG_ARM_MEMLAT_MON)		+= arm-memlat-mon.o
+obj-$(CONFIG_DEVFREQ_GOV_MEMLAT)	+= governor_memlat.o
+obj-$(CONFIG_ARM_QCOM_DEVFREQ_QOSLAT)	+= devfreq_qcom_qoslat.o
 obj-$(CONFIG_QCOM_BIMC_BWMON)		+= bimc-bwmon.o
 
 # DEVFREQ Event Drivers

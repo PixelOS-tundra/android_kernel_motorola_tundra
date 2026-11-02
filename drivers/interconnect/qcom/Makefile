@@ -89,3 +89,4 @@ obj-$(CONFIG_INTERCONNECT_QCOM_QOS) += qnoc-qos.o
 obj-$(CONFIG_INTERCONNECT_QCOM_QOS_RPM) += qnoc-qos-rpm.o
 obj-$(CONFIG_INTERCONNECT_QCOM_DEBUG) += icc-debug.o
 obj-$(CONFIG_INTERCONNECT_QCOM_MDM9X07) += qnoc-mdm9x07.o
+obj-$(CONFIG_INTERCONNECT_QCOM_EPSS_L3) += epss-l3.o
