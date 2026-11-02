@@ -21,6 +21,9 @@
 #include <linux/cpu_pm.h>
 #include <linux/cpu.h>
 #include <linux/of_fdt.h>
+#include <linux/cpu_pm.h>
+#include <soc/qcom/of_common.h>
+
 #include "governor.h"
 #include "governor_memlat.h"
 #include <linux/perf_event.h>
@@ -430,6 +433,8 @@ exit:
 	return ret;
 }
 
+static int memlat_hp_state;
+
 #ifdef CONFIG_HOTPLUG_CPU
 static int memlat_hp_restart_events(unsigned int cpu, bool cpu_up)
 {
@@ -533,12 +538,13 @@ static int memlat_event_cpu_hp_init(void)
 				"MEMLAT_EVENT",
 				memlat_event_hotplug_coming_up,
 				memlat_event_hotplug_going_down);
-	if (ret < 0)
+	if (ret < 0) {
 		pr_err("memlat: failed to register CPU hotplug notifier: %d\n",
 									ret);
-	else
-		ret = 0;
-	return ret;
+		return ret;
+	}
+	memlat_hp_state = ret;
+	return 0;
 }
 #else
 static int memlat_event_cpu_hp_init(void) { return 0; }
@@ -546,23 +552,21 @@ static int memlat_event_cpu_hp_init(void) { return 0; }
 static int memlat_idle_notif(struct notifier_block *nb, unsigned long action,
 							void *data)
 {
-	int ret = NOTIFY_OK;
 	int cpu = smp_processor_id();
 
+	/* An error returned here would abort the idle entry. */
 	switch (action) {
-	case IDLE_START:
+	case CPU_PM_ENTER:
 		__this_cpu_write(cpu_is_idle, true);
-		if (per_cpu(cpu_is_hp, cpu))
-			goto idle_exit;
-		else
-			ret = memlat_idle_read_events(cpu);
+		if (!per_cpu(cpu_is_hp, cpu))
+			memlat_idle_read_events(cpu);
 		break;
-	case IDLE_END:
+	case CPU_PM_ENTER_FAILED:
+	case CPU_PM_EXIT:
 		__this_cpu_write(cpu_is_idle, false);
 		break;
 	}
-idle_exit:
-	return ret;
+	return NOTIFY_OK;
 }
 static struct notifier_block memlat_event_idle_nb = {
 	.notifier_call = memlat_idle_notif,
@@ -586,18 +590,18 @@ static int start_hwmon(struct memlat_hwmon *hw)
 	if (should_init_cpu_grp) {
 		mutex_lock(&notify_lock);
 		if (!hp_idle_register_cnt) {
-			get_online_cpus();
+			cpus_read_lock();
 			for_each_cpu(cpu, cpu_possible_mask) {
 				if (!cpumask_test_cpu(cpu, cpu_online_mask))
 					per_cpu(cpu_is_hp, cpu) = true;
 			}
 			ret = memlat_event_cpu_hp_init();
-			put_online_cpus();
+			cpus_read_unlock();
 			if (ret < 0) {
 				mutex_unlock(&notify_lock);
 				goto unlock_out;
 			}
-			idle_notifier_register(&memlat_event_idle_nb);
+			cpu_pm_register_notifier(&memlat_event_idle_nb);
 		}
 		hp_idle_register_cnt++;
 		mutex_unlock(&notify_lock);
@@ -691,8 +695,10 @@ static void stop_hwmon(struct memlat_hwmon *hw)
 	mutex_unlock(&cpu_grp->mons_lock);
 	mutex_lock(&notify_lock);
 	if (!hp_idle_register_cnt) {
-		cpuhp_remove_state_nocalls(CPUHP_AP_ONLINE_DYN);
-		idle_notifier_unregister(&memlat_event_idle_nb);
+		if (memlat_hp_state > 0)
+			cpuhp_remove_state_nocalls(memlat_hp_state);
+		memlat_hp_state = 0;
+		cpu_pm_unregister_notifier(&memlat_event_idle_nb);
 		for_each_cpu(cpu, cpu_possible_mask) {
 			per_cpu(cpu_is_hp, cpu) = false;
 			per_cpu(cpu_is_idle, cpu) = false;
