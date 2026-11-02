@@ -1234,6 +1234,14 @@ ext-mod-dirs := \
  	$(ext-mod-dir)/nxp/opensource/driver
 ext-mod-dirs := $(subst $(srctree)/,,$(ext-mod-dirs))
 
+# tundra builds these in-tree. The ROM builds its HALs against make headers.
+ext-mod-dirs += \
+	drivers/gpu/msm \
+	techpack/audio \
+	techpack/camera \
+	techpack/display \
+	techpack/video
+
 #Default location for installed headers
 ifeq ($(KBUILD_EXTMOD),)
 PHONY += archheaders archscripts
