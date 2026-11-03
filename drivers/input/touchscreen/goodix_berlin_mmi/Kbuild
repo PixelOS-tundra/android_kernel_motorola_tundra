@@ -95,7 +95,10 @@ ifneq ($(filter m y,$(CONFIG_INPUT_GTP_PASSIVE_PEN_NOTIFIER)),)
     ccflags-y += -DGTP_PEN_NOTIFIER
 endif
 
-ifneq ($(findstring _factory,$(TARGET_PRODUCT)),)
+GTP_PRODUCT := $(patsubst "%",%,$(CONFIG_GTP_PRODUCT))
+ifneq ($(GTP_PRODUCT),)
+USE_TARGET_PRODUCT := $(GTP_PRODUCT)
+else ifneq ($(findstring _factory,$(TARGET_PRODUCT)),)
 USE_TARGET_PRODUCT := $(strip $(subst _factory,, $(TARGET_PRODUCT)))
 else
 USE_TARGET_PRODUCT := $(TARGET_PRODUCT)
