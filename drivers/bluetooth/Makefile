@@ -12,6 +12,8 @@ obj-$(CONFIG_BT_HCIDTL1)	+= dtl1_cs.o
 obj-$(CONFIG_BT_HCIBT3C)	+= bt3c_cs.o
 obj-$(CONFIG_BT_HCIBLUECARD)	+= bluecard_cs.o
 obj-$(CONFIG_MSM_BT_POWER)	+= btpower.o
+obj-$(CONFIG_BTFM_SLIM)		+= bt_fm_slim.o
+bt_fm_slim-objs			:= btfm_slim.o btfm_slim_codec.o btfm_slim_slave.o
 obj-$(CONFIG_BT_HCIBTUSB)	+= btusb.o
 obj-$(CONFIG_BT_HCIBTSDIO)	+= btsdio.o
 
