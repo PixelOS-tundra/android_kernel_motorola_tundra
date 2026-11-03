@@ -37,4 +37,14 @@ config GTP_LIMIT_USE_SUPPLIER
 	help
 		Say Y here to support using supplier.
 
+config GTP_PRODUCT
+	string "Product the report rate table is selected for"
+	default ""
+	help
+	  Moto product name, such as "tundra", that selects the per-product
+	  report rate table (interpolation modes). It takes precedence over
+	  TARGET_PRODUCT, which a ROM build sets to its own product name and a
+	  standalone kernel build leaves unset. Leave empty to use
+	  TARGET_PRODUCT.
+
 endif
