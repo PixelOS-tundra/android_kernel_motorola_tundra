@@ -409,6 +409,19 @@ config MSM_BT_POWER
                 Say Y here to compile support for Bluetooth Power driver
                 into the kernel or say M to compile as a module.
 
+config BTFM_SLIM
+	tristate "MSM Bluetooth/FM Slimbus Device"
+	depends on MSM_BT_POWER && SLIMBUS && SND_SOC
+	help
+	  This enables the BT/FM SLIMbus slave driver, which exposes the
+	  Bluetooth SCO/A2DP and FM audio ports of the WCN chip to the
+	  machine driver as an ASoC codec. The ADSP is the SLIMbus manager;
+	  this driver configures the slave ports and asks the manager to
+	  define and activate the data channels.
+
+	  Say Y here to compile support for Bluetooth slimbus driver
+	  into the kernel or say M to compile as a module.
+
 
 config BT_MTKUART
 	tristate "MediaTek HCI UART driver"
