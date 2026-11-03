@@ -2067,6 +2067,7 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 	int irq;
 	int ret;
 	struct pdr_service *pds;
+	const char *ssr_name;
 
 	ctrl = devm_kzalloc(dev, sizeof(*ctrl), GFP_KERNEL);
 	if (!ctrl)
@@ -2200,8 +2201,15 @@ static int qcom_slim_ngd_ctrl_probe(struct platform_device *pdev)
 		goto err_unregister_ngd;
 	}
 
+	/*
+	 * Upstream remoteprocs name the ADSP SSR subdevice "lpass"; DTs whose
+	 * remoteproc uses another name (lahaina: "adsp") give it here.
+	 */
+	if (of_property_read_string(dev->of_node, "qcom,ssr-name", &ssr_name))
+		ssr_name = "lpass";
+
 	ctrl->nb.notifier_call = qcom_slim_ngd_ssr_notify;
-	ctrl->notifier = qcom_register_ssr_notifier("lpass", &ctrl->nb);
+	ctrl->notifier = qcom_register_ssr_notifier(ssr_name, &ctrl->nb);
 	if (IS_ERR(ctrl->notifier)) {
 		ret = PTR_ERR(ctrl->notifier);
 		dev_err(dev, "Failed to register SSR notification: %d\n", ret);
