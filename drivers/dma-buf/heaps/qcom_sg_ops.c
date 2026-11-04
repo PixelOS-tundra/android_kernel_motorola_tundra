@@ -31,6 +31,7 @@
 #include <linux/dma-map-ops.h>
 #include <linux/qcom_dma_heap.h>
 #include <linux/msm_dma_iommu_mapping.h>
+#include <linux/qcom-dma-mapping.h>
 #include <linux/qti-smmu-proxy-callbacks.h>
 #include <linux/mem-buf.h>
 #include <soc/qcom/secure_buffer.h>
@@ -128,6 +129,39 @@ void qcom_sg_detach(struct dma_buf *dmabuf,
 	kfree(a);
 }
 
+/*
+ * Devices marked "dma-coherent-hint-cached" (camera, video, CVP and fastrpc
+ * context banks on lahaina) expect CACHED buffers to be mapped IO-coherent,
+ * as 5.4's msm ION did. Their userspace (CamX, the video firmware path)
+ * skips cache maintenance on such buffers, so a non-coherent mapping makes
+ * the hardware read stale data (corrupted photos and video frames).
+ */
+static bool qcom_sg_dev_hint_cached(struct device *dev)
+{
+	struct device_node *node = of_node_get(dev->of_node);
+
+	while (node) {
+		if (of_property_read_bool(node, "dma-coherent-hint-cached")) {
+			of_node_put(node);
+			return true;
+		}
+		node = of_get_next_parent(node);
+	}
+	return false;
+}
+
+static unsigned long qcom_sg_coherent_attrs(struct dma_buf_attachment *attachment,
+					    struct qcom_sg_buffer *buffer,
+					    unsigned long attrs)
+{
+	if (!buffer->uncached && mem_buf_vmperm_can_cmo(buffer->vmperm) &&
+	    !dev_is_dma_coherent(attachment->dev) &&
+	    !(attrs & DMA_ATTR_FORCE_NON_COHERENT) &&
+	    qcom_sg_dev_hint_cached(attachment->dev))
+		attrs |= DMA_ATTR_FORCE_COHERENT;
+	return attrs;
+}
+
 struct sg_table *qcom_sg_map_dma_buf(struct dma_buf_attachment *attachment,
 				     enum dma_data_direction direction)
 {
@@ -155,6 +189,7 @@ struct sg_table *qcom_sg_map_dma_buf(struct dma_buf_attachment *attachment,
 	mem_buf_vmperm_pin(vmperm);
 	if (buffer->uncached || !mem_buf_vmperm_can_cmo(vmperm))
 		attrs |= DMA_ATTR_SKIP_CPU_SYNC;
+	attrs = qcom_sg_coherent_attrs(attachment, buffer, attrs);
 
 	if (attrs & DMA_ATTR_DELAYED_UNMAP) {
 		ret = msm_dma_map_sgtable(attachment->dev, table, direction,
@@ -205,6 +240,7 @@ void qcom_sg_unmap_dma_buf(struct dma_buf_attachment *attachment,
 
 	if (buffer->uncached || !mem_buf_vmperm_can_cmo(vmperm))
 		attrs |= DMA_ATTR_SKIP_CPU_SYNC;
+	attrs = qcom_sg_coherent_attrs(attachment, buffer, attrs);
 
 	a->mapped = false;
 
