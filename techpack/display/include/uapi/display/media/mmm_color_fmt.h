@@ -49,10 +49,10 @@ enum mmm_color_fmts {
 	 * . . . . . . . . . . . . . . . .  V
 	 * . . . . . . . . . . . . . . . .  --> Buffer size alignment
 	 *
-	 * Y_Stride : Width aligned to 128
-	 * UV_Stride : Width aligned to 128
-	 * Y_Scanlines: Height aligned to 32
-	 * UV_Scanlines: Height/2 aligned to 16
+	 * Y_Stride : Width aligned to 512
+	 * UV_Stride : Width aligned to 512
+	 * Y_Scanlines: Height aligned to 512
+	 * UV_Scanlines: Height/2 aligned to 256
 	 * Total size = align(Y_Stride * Y_Scanlines
 	 *          + UV_Stride * UV_Scanlines, 4096)
 	 */
@@ -84,10 +84,10 @@ enum mmm_color_fmts {
 	 * . . . . . . . . . . . . . . . .  V
 	 * . . . . . . . . . . . . . . . .  --> Padding & Buffer size alignment
 	 *
-	 * Y_Stride : Width aligned to 128
-	 * UV_Stride : Width aligned to 128
-	 * Y_Scanlines: Height aligned to 32
-	 * UV_Scanlines: Height/2 aligned to 16
+	 * Y_Stride : Width aligned to 512
+	 * UV_Stride : Width aligned to 512
+	 * Y_Scanlines: Height aligned to 512
+	 * UV_Scanlines: Height/2 aligned to 256
 	 * Total size = align(Y_Stride * Y_Scanlines
 	 *          + UV_Stride * UV_Scanlines, 4096)
 	 */
@@ -467,7 +467,7 @@ enum mmm_color_fmts {
 	 * . . . . . . . . . . . . . . . .              |
 	 * . . . . . . . . . . . . . . . .              V
 	 *
-	 * RGB_Stride = align(Width * 4, 256)
+	 * RGB_Stride = align(Width * 4, 128)
 	 * RGB_Scanlines = align(Height, 32)
 	 * RGB_Plane_size = align(RGB_Stride * RGB_Scanlines, 4096)
 	 *
@@ -865,12 +865,12 @@ static inline unsigned int MMM_COLOR_FMT_Y_STRIDE(unsigned int color_fmt,
 		goto invalid_input;
 
 	switch (color_fmt) {
+	case MMM_COLOR_FMT_NV12:
+	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_512:
 		alignment = 512;
 		stride = MMM_COLOR_FMT_ALIGN(width, alignment);
 		break;
-	case MMM_COLOR_FMT_NV12:
-	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_UBWC:
 		alignment = 128;
 		stride = MMM_COLOR_FMT_ALIGN(width, alignment);
@@ -912,12 +912,12 @@ static inline unsigned int MMM_COLOR_FMT_UV_STRIDE(unsigned int color_fmt,
 		goto invalid_input;
 
 	switch (color_fmt) {
+	case MMM_COLOR_FMT_NV12:
+	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_512:
 		alignment = 512;
 		stride = MMM_COLOR_FMT_ALIGN(width, alignment);
 		break;
-	case MMM_COLOR_FMT_NV12:
-	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_UBWC:
 		alignment = 128;
 		stride = MMM_COLOR_FMT_ALIGN(width, alignment);
@@ -959,11 +959,11 @@ static inline unsigned int MMM_COLOR_FMT_Y_SCANLINES(unsigned int color_fmt,
 		goto invalid_input;
 
 	switch (color_fmt) {
+	case MMM_COLOR_FMT_NV12:
+	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_512:
 		alignment = 512;
 		break;
-	case MMM_COLOR_FMT_NV12:
-	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_UBWC:
 	case MMM_COLOR_FMT_P010_512:
 	case MMM_COLOR_FMT_P010:
@@ -998,11 +998,11 @@ static inline unsigned int MMM_COLOR_FMT_UV_SCANLINES(unsigned int color_fmt,
 
 	switch (color_fmt) {
 
+	case MMM_COLOR_FMT_NV12:
+	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_512:
 		alignment = 256;
 		break;
-	case MMM_COLOR_FMT_NV12:
-	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_BPP10_UBWC:
 	case MMM_COLOR_FMT_P010_UBWC:
 	case MMM_COLOR_FMT_P010_512:
@@ -1169,7 +1169,7 @@ static inline unsigned int MMM_COLOR_FMT_RGB_STRIDE(unsigned int color_fmt,
 
 	switch (color_fmt) {
 	case MMM_COLOR_FMT_RGBA8888:
-		alignment = 256;
+		alignment = 128;
 		break;
 	case MMM_COLOR_FMT_RGB565_UBWC:
 		alignment = 256;
