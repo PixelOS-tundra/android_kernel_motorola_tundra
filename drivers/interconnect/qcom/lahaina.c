@@ -2639,6 +2639,7 @@ static struct qcom_icc_desc lahaina_mmss_noc = {
 	.num_bcms = ARRAY_SIZE(mmss_noc_bcms),
 	.voters = mmss_noc_voters,
 	.num_voters = ARRAY_SIZE(mmss_noc_voters),
+	.reapply_qos = true,
 };
 
 static struct qcom_icc_bcm *nsp_noc_bcms[] = {

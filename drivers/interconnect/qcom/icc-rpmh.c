@@ -23,6 +23,46 @@
 static LIST_HEAD(qnoc_probe_list);
 static DEFINE_MUTEX(probe_list_lock);
 
+/* Number of times static QoS was re-applied on a bandwidth vote. */
+static unsigned int qos_reapply_count;
+module_param(qos_reapply_count, uint, 0444);
+
+/*
+ * The QoS registers of a NoC lose their contents when its power domain
+ * collapses (MMNOC goes down with MMCX once display, camera and video are
+ * idle), so the settings written at probe don't survive. 5.4 wrote them on
+ * the first non-zero vote of each node; on providers that ask for it
+ * (desc->reapply_qos), write them again every time a node goes from no
+ * bandwidth to some bandwidth. Called after the BCM votes were committed,
+ * so the NoC is up.
+ */
+static void qcom_icc_reapply_qos(struct qcom_icc_provider *qp,
+				 struct icc_node *node,
+				 struct qcom_icc_node *qn)
+{
+	bool active = node->avg_bw || node->peak_bw;
+	int ret;
+
+	if (!qp->reapply_qos || qp->skip_qos || !qn->qosbox || !qn->noc_ops ||
+	    !qn->noc_ops->set_qos || !qn->regmap)
+		return;
+
+	if (active && !qn->qosbox->initialized) {
+		ret = clk_bulk_prepare_enable(qp->num_clks, qp->clks);
+		if (ret) {
+			dev_err(qp->dev, "failed to enable QoS clocks for %s: %d\n",
+				qn->name, ret);
+			return;
+		}
+
+		qn->noc_ops->set_qos(qn);
+		clk_bulk_disable_unprepare(qp->num_clks, qp->clks);
+		qos_reapply_count++;
+	}
+
+	qn->qosbox->initialized = active;
+}
+
 /**
  * qcom_icc_pre_aggregate - cleans up stale values from prior icc_set
  * @node: icc node to operate on
@@ -163,6 +203,8 @@ int qcom_icc_set(struct icc_node *src, struct icc_node *dst)
 
 	for (i = 0; i < qp->num_voters; i++)
 		qcom_icc_bcm_voter_commit(qp->voters[i]);
+
+	qcom_icc_reapply_qos(qp, node, qn);
 
 	return 0;
 }
@@ -447,6 +489,7 @@ int qcom_icc_rpmh_probe(struct platform_device *pdev)
 
 	qp->stub = of_property_read_bool(pdev->dev.of_node, "qcom,stub");
 	qp->skip_qos = of_property_read_bool(pdev->dev.of_node, "qcom,skip-qos");
+	qp->reapply_qos = desc->reapply_qos;
 
 	provider = &qp->provider;
 	provider->dev = dev;
