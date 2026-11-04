@@ -2146,14 +2146,9 @@ static int q6lsm_mmapcallback(struct apr_client_data *data, void *priv)
 		return -EINVAL;
 	}
 
-	if (data->payload_size < (2 * sizeof(uint32_t))) {
-		pr_err("%s: payload has invalid size[%d]\n", __func__,
-			data->payload_size);
-		return -EINVAL;
-	}
-
 	command = payload[0];
-	retcode = payload[1];
+	/* LSM_SESSION_CMDRSP_SHARED_MEM_MAP_REGIONS carries only the handle */
+	retcode = data->payload_size >= (2 * sizeof(uint32_t)) ? payload[1] : 0;
 	sid = (data->token >> 8) & 0x0F;
 	pr_debug("%s: opcode 0x%x command 0x%x return code 0x%x SID 0x%x\n",
 		 __func__, data->opcode, command, retcode, sid);
