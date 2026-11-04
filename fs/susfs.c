@@ -180,7 +180,7 @@ void susfs_spoof_avd_allowed_rcu(u32 s_type, u32 t_type, u32 c_type, u32 *avd_al
  * susfs_restore_creds() afterwards.
  * Returns the original credentials on success, NULL on failure.
  */
-static struct cred *susfs_switch_to_ksu_domain(void) {
+static struct cred * __maybe_unused susfs_switch_to_ksu_domain(void) {
 	struct cred *orig_cred = NULL;
 	struct cred *cred = NULL;
 
@@ -214,7 +214,7 @@ static struct cred *susfs_switch_to_ksu_domain(void) {
  * Restores the original credentials that were saved by
  * susfs_switch_to_ksu_domain().
  */
-static void susfs_restore_creds(struct cred *orig_cred) {
+static void __maybe_unused susfs_restore_creds(struct cred *orig_cred) {
 	if (!orig_cred)
 		return;
 
