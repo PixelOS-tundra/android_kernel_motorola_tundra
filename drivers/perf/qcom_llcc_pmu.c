@@ -341,7 +341,23 @@ static struct platform_driver qcom_llcc_pmu_driver = {
 	},
 	.probe = qcom_llcc_pmu_probe,
 };
-module_platform_driver(qcom_llcc_pmu_driver);
+
+/*
+ * memlat looks the PMU type up when it starts its monitors (device
+ * initcall, drivers/devfreq links before drivers/perf), so register
+ * earlier.
+ */
+static int __init qcom_llcc_pmu_init(void)
+{
+	return platform_driver_register(&qcom_llcc_pmu_driver);
+}
+subsys_initcall(qcom_llcc_pmu_init);
+
+static void __exit qcom_llcc_pmu_exit(void)
+{
+	platform_driver_unregister(&qcom_llcc_pmu_driver);
+}
+module_exit(qcom_llcc_pmu_exit);
 
 MODULE_DESCRIPTION("QCOM LLCC PMU");
 MODULE_LICENSE("GPL");
