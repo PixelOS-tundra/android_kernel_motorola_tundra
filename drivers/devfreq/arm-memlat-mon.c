@@ -23,6 +23,7 @@
 #include <linux/of_fdt.h>
 #include <linux/cpu_pm.h>
 #include <soc/qcom/of_common.h>
+#include <soc/qcom/qcom_llcc_pmu.h>
 
 #include "governor.h"
 #include "governor_memlat.h"
@@ -312,6 +313,22 @@ static int set_event(struct event_data *ev, int cpu, unsigned int event_id,
 
 	if (!event_id)
 		return 0;
+
+	attr->type = PERF_TYPE_RAW;
+	/*
+	 * The LLCC read-miss event (used by the llcc-ddr and ddr-latfloor
+	 * monitors) belongs to the LLCC PMU, not the CPU PMU. Opened as a
+	 * raw CPU event it is accepted but never counts, so those monitors
+	 * see no misses and never vote DDR up.
+	 */
+	if (event_id == QCOM_LLCC_PMU_RD_EV) {
+		u32 type = PERF_TYPE_RAW;
+
+		if (!qcom_llcc_pmu_hw_type(&type) && type != PERF_TYPE_RAW)
+			attr->type = type;
+		else
+			pr_warn_once("memlat: LLCC PMU not available, LLCC miss event won't count\n");
+	}
 
 	attr->config = event_id;
 	pevent = perf_event_create_kernel_counter(attr, cpu, NULL, NULL, NULL);
