@@ -29,7 +29,6 @@
 #include <linux/spinlock.h>
 #include <linux/swiotlb.h>
 #include <linux/vmalloc.h>
-#include <linux/qcom-dma-mapping.h>
 #ifndef __GENKSYMS__
 #include <trace/events/swiotlb.h>
 #endif
@@ -616,13 +615,7 @@ done_unlock:
 static int dma_info_to_prot(enum dma_data_direction dir, bool coherent,
 		     unsigned long attrs)
 {
-	int prot;
-
-	if (attrs & DMA_ATTR_FORCE_COHERENT)
-		coherent = true;
-	else if (attrs & DMA_ATTR_FORCE_NON_COHERENT)
-		coherent = false;
-	prot = coherent ? IOMMU_CACHE : 0;
+	int prot = coherent ? IOMMU_CACHE : 0;
 
 	if (attrs & DMA_ATTR_PRIVILEGED)
 		prot |= IOMMU_PRIV;
@@ -1229,10 +1222,6 @@ static int iommu_dma_map_sg(struct device *dev, struct scatterlist *sg,
 		if (ret)
 			goto out;
 	}
-
-	/* IO-coherent mappings need no CPU cache maintenance */
-	if (attrs & DMA_ATTR_FORCE_COHERENT)
-		attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 
 	if (dev_use_swiotlb(dev))
 		return iommu_dma_map_sg_swiotlb(dev, sg, nents, dir, attrs);
