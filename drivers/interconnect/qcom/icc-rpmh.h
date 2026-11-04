@@ -39,6 +39,7 @@ struct qcom_icc_provider {
 	size_t num_voters;
 	bool stub;
 	bool skip_qos;
+	bool reapply_qos;
 };
 
 /**
@@ -173,6 +174,7 @@ struct qcom_icc_desc {
 	size_t num_bcms;
 	char **voters;
 	size_t num_voters;
+	bool reapply_qos;
 };
 
 #define DEFINE_QNODE(_name, _id, _channels, _buswidth, ...)		\
