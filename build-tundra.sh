@@ -12,5 +12,10 @@ mkdir -p "$OUT"
 $M gki_defconfig
 $SRC/scripts/kconfig/merge_config.sh -m -O "$OUT" "$OUT/.config" \
 	"$SRC/arch/arm64/configs/vendor/tundra.config" >/dev/null
+# KSU=1: built-in root (ReSukiSU + SUSFS) for the torracat KSU zip
+if [ "${KSU:-0}" = 1 ]; then
+	$SRC/scripts/kconfig/merge_config.sh -m -O "$OUT" "$OUT/.config" \
+		"$SRC/arch/arm64/configs/vendor/tundra-ksu.config" >/dev/null
+fi
 $M olddefconfig
 nice $M -j${JOBS:-32} Image dtbs
