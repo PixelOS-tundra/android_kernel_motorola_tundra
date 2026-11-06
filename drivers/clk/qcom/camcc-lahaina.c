@@ -676,7 +676,6 @@ static struct clk_rcg2 cam_cc_camnoc_axi_clk_src = {
 		.vdd_class = &vdd_mm,
 		.num_rate_max = VDD_NUM,
 		.rate_max = (unsigned long[VDD_NUM]) {
-			[VDD_LOWER] = 300000000,
 			[VDD_LOW] = 400000000},
 	},
 };
