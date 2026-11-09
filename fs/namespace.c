@@ -366,10 +366,9 @@ static struct mount *susfs_alloc_unshare_ksu_vfsmnt(const char *name, int old_mn
 		INIT_LIST_HEAD(&mnt->mnt_list);
 		INIT_LIST_HEAD(&mnt->mnt_expire);
 		INIT_LIST_HEAD(&mnt->mnt_share);
-		INIT_LIST_HEAD(&mnt->mnt_slave_list);
-		INIT_LIST_HEAD(&mnt->mnt_slave);
+		INIT_HLIST_HEAD(&mnt->mnt_slave_list);
+		INIT_HLIST_NODE(&mnt->mnt_slave);
 		INIT_HLIST_NODE(&mnt->mnt_mp_list);
-		INIT_LIST_HEAD(&mnt->mnt_umounting);
 		INIT_HLIST_HEAD(&mnt->mnt_stuck_children);
 		RB_CLEAR_NODE(&mnt->mnt_node);
 		mnt->mnt.mnt_idmap = &nop_mnt_idmap;
@@ -430,10 +429,9 @@ static struct mount *susfs_alloc_non_unshare_ksu_vfsmnt(const char *name)
 		INIT_LIST_HEAD(&mnt->mnt_list);
 		INIT_LIST_HEAD(&mnt->mnt_expire);
 		INIT_LIST_HEAD(&mnt->mnt_share);
-		INIT_LIST_HEAD(&mnt->mnt_slave_list);
-		INIT_LIST_HEAD(&mnt->mnt_slave);
+		INIT_HLIST_HEAD(&mnt->mnt_slave_list);
+		INIT_HLIST_NODE(&mnt->mnt_slave);
 		INIT_HLIST_NODE(&mnt->mnt_mp_list);
-		INIT_LIST_HEAD(&mnt->mnt_umounting);
 		INIT_HLIST_HEAD(&mnt->mnt_stuck_children);
 		RB_CLEAR_NODE(&mnt->mnt_node);
 		mnt->mnt.mnt_idmap = &nop_mnt_idmap;

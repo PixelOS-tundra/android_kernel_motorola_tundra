@@ -6813,7 +6813,7 @@ static int selinux_setprocattr(const char *name, void *value, size_t size)
 #ifdef CONFIG_KSU_SUSFS
 static int susfs_selinux_lsm_setattr(u64 attr, void *value, size_t size)
 {
-	struct task_security_struct *tsec;
+	struct cred_security_struct *tsec;
 	struct cred *new;
 	u32 mysid = current_sid(), sid = 0, ptsid;
 	int error;
