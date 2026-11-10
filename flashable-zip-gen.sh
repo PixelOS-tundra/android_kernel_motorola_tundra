@@ -44,6 +44,8 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE"
 git -C "$AK3_DIR" archive "$AK3_COMMIT" | tar -x -C "$STAGE"
 rm -rf "$STAGE/README.md" "$STAGE/modules" "$STAGE/patch" "$STAGE/ramdisk"
+# Busybox applet fallback for recoveries that refuse symlinks in $AKHOME.
+patch -s -p1 -d "$STAGE" --no-backup-if-mismatch < "$SRC_DIR/anykernel/setup_bb-fallback.patch"
 cp "$SRC_DIR/anykernel/anykernel.sh" "$STAGE/anykernel.sh"
 cp "$IMAGE" "$STAGE/Image"
 cp "$DTBO" "$STAGE/dtbo.img"
