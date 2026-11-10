@@ -1,0 +1,29 @@
+--- a/META-INF/com/google/android/update-binary
++++ b/META-INF/com/google/android/update-binary
+@@ -260,7 +260,25 @@
+   bb=$AKHOME/tools/busybox;
+   chmod 755 $bb;
+   $bb chmod -R 755 tools bin;
+-  $bb --install -s bin;
++  # tundra: some recoveries refuse symlinks (and links) in $AKHOME, which
++  # left bin/ empty and aborted with "Busybox setup failed". Fall back to
++  # hard links, then to small wrapper scripts, which are plain files.
++  $bb --install -s bin 2>/dev/null;
++  if [ ! -x bin/sh ]; then
++    $bb rm -f bin/*;
++    $bb --install bin 2>/dev/null;
++  fi;
++  if [ ! -x bin/sh ]; then
++    local applet sh;
++    $bb rm -f bin/*;
++    sh=/system/bin/sh;
++    [ -x $sh ] || sh=/sbin/sh;
++    for applet in $($bb --list); do
++      printf '#!%s\nexec %s %s "$@"\n' $sh $bb $applet > "bin/$applet";
++    done;
++    $bb chmod 755 bin/*;
++  fi;
++  [ -x bin/sh ];
+ }
+ debugging() {
+   local debug log path;
