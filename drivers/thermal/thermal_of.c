@@ -86,7 +86,7 @@ static int thermal_of_populate_trip(struct device_node *np,
 		return ret;
 	}
 
-	trip->flags = THERMAL_TRIP_FLAG_RW_TEMP;
+	trip->flags = THERMAL_TRIP_FLAG_RW;
 
 	trip->priv = np;
 
