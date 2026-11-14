@@ -222,7 +222,6 @@ static struct clk_rcg2 video_cc_mvs0_clk_src = {
 		.vdd_class = &vdd_mm,
 		.num_rate_max = VDD_NUM,
 		.rate_max = (unsigned long[VDD_NUM]) {
-			[VDD_LOWER] = 720000000,
 			[VDD_LOW] = 1014000000,
 			[VDD_LOW_L1] = 1098000000,
 			[VDD_NOMINAL] = 1332000000},
@@ -255,7 +254,6 @@ static struct clk_rcg2 video_cc_mvs1_clk_src = {
 		.vdd_class = &vdd_mm,
 		.num_rate_max = VDD_NUM,
 		.rate_max = (unsigned long[VDD_NUM]) {
-			[VDD_LOWER] = 840000000,
 			[VDD_LOW] = 1098000000,
 			[VDD_NOMINAL] = 1332000000},
 	},
